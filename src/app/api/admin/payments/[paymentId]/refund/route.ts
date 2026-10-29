@@ -1,0 +1,7 @@
+import { z } from "zod";
+import Payment from "@/models/Payment";
+import { currentUser, readJson, routeParams, requireId, withApi, writeAudit } from "@/lib/api-utils";
+import { refundBookingPayment } from "@/lib/payout";
+import { AppError } from "@/types";
+const schema = z.object({ amountPaise: z.number().int().min(1).optional(), reason: z.string().trim().min(3).max(1000) });
+export const POST = withApi(async (request, context) => { const admin = await currentUser(request, ["admin"]); const { paymentId } = await routeParams(context); requireId(paymentId, "paymentId"); const key = request.headers.get("idempotency-key"); if (!key || key.length > 200) throw new AppError("Send an Idempotency-Key header for refund requests.", 400, "IDEMPOTENCY_KEY_REQUIRED"); const body = schema.parse(await readJson(request)); const payment = await Payment.findById(paymentId).select("bookingId amountPaise status").lean(); if (!payment) throw new AppError("Payment not found.", 404, "PAYMENT_NOT_FOUND"); const result = await refundBookingPayment({ bookingId: String(payment.bookingId), paymentId, amountPaise: body.amountPaise, reason: body.reason, requestedBy: admin.userId, idempotencyKey: key }); await writeAudit({ actorUserId: admin.userId, actorRole: "admin", action: "payment.refund_requested", targetType: "Payment", targetId: paymentId, before: { status: payment.status }, after: { status: (result.payment as any).status, refundStatus: (result.refund as any)?.status, amountPaise: (result.refund as any)?.amountPaise }, request }); return result; });

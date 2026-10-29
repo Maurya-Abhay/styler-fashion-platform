@@ -1,0 +1,10 @@
+import type { Metadata } from "next";
+import { CustomerPortalShell } from "@/components/customer-portal-shell";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
+export default function CustomerLayout({ children }: { children: React.ReactNode }) {
+  return <CustomerPortalShell>{children}</CustomerPortalShell>;
+}

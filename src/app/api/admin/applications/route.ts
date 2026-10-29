@@ -1,0 +1,4 @@
+import ProfessionalProfile from "@/models/ProfessionalProfile";
+import User from "@/models/User";
+import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
+export const GET = withApi(async (request) => { await currentUser(request, ["admin"]); const url = new URL(request.url); const { page, limit, skip } = paginationFromRequest(request); const status = url.searchParams.get("status") || "pending_review"; const filter: Record<string, unknown> = status === "all" ? {} : { applicationStatus: status }; const [items, total] = await Promise.all([ProfessionalProfile.find(filter).sort({ applicationSubmittedAt: 1, createdAt: 1 }).skip(skip).limit(limit).populate({ path: "userId", select: "name email phone accountStatus createdAt" }).lean(), ProfessionalProfile.countDocuments(filter)]); return { items, page, limit, total, totalPages: Math.ceil(total / limit) }; });

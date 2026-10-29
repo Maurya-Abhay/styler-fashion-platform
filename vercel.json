@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/expire-offers",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/expire-payment-holds",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/retry-notifications",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/retry-matching-requests",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-payouts",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

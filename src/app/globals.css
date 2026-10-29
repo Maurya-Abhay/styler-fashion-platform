@@ -1,0 +1,268 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Unified Styler Design System */
+:root {
+  color-scheme: light;
+  --bg: #fbf8fb;
+  --bg-elev: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f7f1f6;
+  --surface-3: #efe4ed;
+  --ink: #241a2b;
+  --ink-soft: #5f5368;
+  --muted: #8f8497;
+  --line: #eee5ee;
+  --line-strong: #dccdda;
+  --accent: #db2777;
+  --accent-strong: #be185d;
+  --accent-soft: #fce7f3;
+  --accent-2: #f472b6;
+  --warning: #b7791f;
+  --warning-bg: #fff4de;
+  --success: #1f8a5b;
+  --success-bg: #e5f6ee;
+  --danger: #c2413a;
+  --danger-bg: #fdecea;
+  --info: #3b6fb6;
+  --info-bg: #e8f0fb;
+  --shadow: 0 18px 50px rgba(74, 24, 66, 0.09);
+  --shadow-soft: 0 6px 20px rgba(74, 24, 66, 0.06);
+  --radius: 4px;
+  --radius-sm: 4px;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #080d16;
+  --bg-elev: #0d111a;
+  --surface: #121620;
+  --surface-2: #181d2a;
+  --surface-3: #222838;
+  --ink: #eef1fa;
+  --ink-soft: #b9c1d6;
+  --muted: #8892ad;
+  --line: #1e2638;
+  --line-strong: #2e3850;
+  --accent: #db2777;
+  --accent-strong: #f472b6;
+  --accent-soft: #371b2c;
+  --accent-2: #f472b6;
+  --warning: #f0b95e;
+  --warning-bg: #3a2d17;
+  --success: #4fd09a;
+  --success-bg: #132f27;
+  --danger: #f2877f;
+  --danger-bg: #3a1f24;
+  --info: #7fb0f0;
+  --info-bg: #17263f;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Minimal Reset & Base Styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--line);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+body, button, input, select, textarea {
+  font-family: var(--font-sans);
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+  margin: 0;
+}
+
+ul, ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  background-color: transparent;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+textarea {
+  resize: vertical;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::selection {
+  background-color: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Reduced Motion Utility */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Utility Classes */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Theme & Layout Specific Overrides */
+.public-theme, .public-theme * {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: ease;
+}
+
+.public-theme img, .public-theme svg {
+  transition-property: none;
+}
+
+:root[data-theme="dark"] .public-theme .bg-white {
+  background-color: var(--surface);
+}
+
+:root[data-theme="dark"] .public-theme .text-white {
+  color: #fff8fc;
+}
+
+/* Form & Input Components */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.field-label {
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: 2.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0.6rem 0.8rem;
+  color: var(--ink);
+  font-size: 0.82rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  outline: none;
+}
+
+/* Buttons & Alerts */
+.button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 150ms ease;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button-primary:hover {
+  background: var(--accent-strong);
+}
+
+.button-secondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.button-secondary:hover {
+  background: var(--surface-2);
+}
+
+.alert {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  font-size: 0.78rem;
+}
+
+.alert-error {
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.alert-success {
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: var(--success-bg);
+  color: var(--success);
+}

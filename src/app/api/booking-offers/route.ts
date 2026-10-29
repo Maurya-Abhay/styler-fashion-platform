@@ -1,0 +1,5 @@
+import BookingOffer from "@/models/BookingOffer";
+import ProfessionalProfile from "@/models/ProfessionalProfile";
+import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
+import { AppError } from "@/types";
+export const GET = withApi(async (request) => { const auth = await currentUser(request, ["professional"]); const profile = await ProfessionalProfile.findOne({ userId: auth.userId, applicationStatus: "approved" }).select("_id").lean(); if (!profile) throw new AppError("Professional approval is required.", 403, "PROFESSIONAL_NOT_APPROVED"); const { page, limit, skip } = paginationFromRequest(request); const url = new URL(request.url); const filter: Record<string, any> = { professionalId: profile._id }; const status = url.searchParams.get("status"); if (status) filter.status = status; const [items, total] = await Promise.all([BookingOffer.find(filter).sort({ sentAt: -1 }).skip(skip).limit(limit).lean(), BookingOffer.countDocuments(filter)]); return { items, page, limit, total, totalPages: Math.ceil(total / limit) }; });

@@ -1,0 +1,4 @@
+import Booking from "@/models/Booking";
+import ProfessionalProfile from "@/models/ProfessionalProfile";
+import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
+export const GET = withApi(async (request) => { const auth = await currentUser(request); const { page, limit, skip } = paginationFromRequest(request); const url = new URL(request.url); const filter: Record<string, any> = {}; if (auth.role === "customer") filter.customerId = auth.userId; else if (auth.role === "professional") { const profile = await ProfessionalProfile.findOne({ userId: auth.userId }).select("_id").lean(); filter.professionalId = profile?._id ?? null; } if (url.searchParams.get("status")) filter.status = url.searchParams.get("status"); const [items, total] = await Promise.all([Booking.find(filter).sort({ startAt: -1 }).skip(skip).limit(limit).lean(), Booking.countDocuments(filter)]); return { items, page, limit, total, totalPages: Math.ceil(total / limit) }; });

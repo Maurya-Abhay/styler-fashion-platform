@@ -1,0 +1,3 @@
+import AuditLog from "@/models/AuditLog";
+import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
+export const GET = withApi(async (request) => { await currentUser(request, ["admin"]); const url = new URL(request.url); const { page, limit, skip } = paginationFromRequest(request); const filter: Record<string, unknown> = {}; if (url.searchParams.get("action")) filter.action = url.searchParams.get("action"); if (url.searchParams.get("targetType")) filter.targetType = url.searchParams.get("targetType"); const [items, total] = await Promise.all([AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), AuditLog.countDocuments(filter)]); return { items, page, limit, total, totalPages: Math.ceil(total / limit) }; });

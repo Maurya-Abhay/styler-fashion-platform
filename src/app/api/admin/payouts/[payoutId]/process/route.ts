@@ -1,0 +1,3 @@
+import { currentUser, routeParams, requireId, withApi, writeAudit } from "@/lib/api-utils";
+import { processRazorpayRoutePayout } from "@/lib/payout";
+export const POST = withApi(async (request, context) => { const admin = await currentUser(request, ["admin"]); const { payoutId } = await routeParams(context); requireId(payoutId, "payoutId"); const result = await processRazorpayRoutePayout(payoutId); await writeAudit({ actorUserId: admin.userId, actorRole: "admin", action: "payout.processed", targetType: "Payout", targetId: payoutId, after: { status: result.status, providerTransferId: result.providerTransferId }, request }); return result; });
