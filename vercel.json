@@ -1,24 +1,25 @@
+
 {
   "crons": [
     {
       "path": "/api/cron/expire-offers",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/expire-payment-holds",
-      "schedule": "* * * * *"
+      "schedule": "5 0 * * *"
     },
     {
       "path": "/api/cron/retry-notifications",
-      "schedule": "* * * * *"
+      "schedule": "10 0 * * *"
     },
     {
       "path": "/api/cron/retry-matching-requests",
-      "schedule": "*/2 * * * *"
+      "schedule": "15 0 * * *"
     },
     {
       "path": "/api/cron/reconcile-payouts",
-      "schedule": "*/5 * * * *"
+      "schedule": "20 0 * * *"
     }
   ]
 }
