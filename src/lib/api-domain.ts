@@ -17,6 +17,7 @@ export function toPublicProfessional(profile: any) {
     slug: profile.slug,
     displayName: profile.displayName || user?.name || "Styler Professional",
     profilePhoto: profile.profilePhoto ?? (user?.profileImageUrl ? { url: user.profileImageUrl } : null),
+    portfolioImages: profile.portfolioImages ?? [],
     bio: profile.bio ?? "",
     experienceYears: profile.experienceYears ?? 0,
     categories: profile.categories ?? [],

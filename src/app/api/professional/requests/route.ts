@@ -3,6 +3,7 @@ import BookingOffer from "@/models/BookingOffer";
 import BookingRequest from "@/models/BookingRequest";
 import Availability from "@/models/Availability";
 import Service from "@/models/Service";
+import { distanceInKilometres } from "@/lib/location";
 import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
 import { AppError } from "@/types";
 export const GET = withApi(async (request) => {
@@ -32,6 +33,14 @@ export const GET = withApi(async (request) => {
     items: offers.map((offer: any) => {
       const req: any = requests.find((item: any) =>
         String(item._id) === String(offer.bookingRequestId));
+      const requestCoordinates = req?.addressSnapshot?.latitude != null
+        && req?.addressSnapshot?.longitude != null
+        ? { latitude: req.addressSnapshot.latitude, longitude: req.addressSnapshot.longitude }
+        : null;
+      const professionalCoordinates = profile.baseLocation?.latitude != null
+        && profile.baseLocation?.longitude != null
+        ? { latitude: profile.baseLocation.latitude, longitude: profile.baseLocation.longitude }
+        : null;
       return {
         ...offer,
         service: offer.serviceId && typeof offer.serviceId === "object" ? offer.serviceId : null,
@@ -48,6 +57,9 @@ export const GET = withApi(async (request) => {
           city: req.addressSnapshot?.city,
           state: req.addressSnapshot?.state,
           postalCode: req.addressSnapshot?.postalCode,
+          distanceKm: requestCoordinates && professionalCoordinates
+            ? Math.round(distanceInKilometres(professionalCoordinates, requestCoordinates) * 10) / 10
+            : null,
           referenceImages: req.referenceImages,
           offerDeadlineAt: req.offerDeadlineAt,
         } : null,

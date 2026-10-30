@@ -69,8 +69,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
-    setEmail(new URLSearchParams(window.location.search).get("email") || "");
-  }, []);
+    const params = new URLSearchParams(window.location.search);
+    setEmail(params.get("email") || "");
+    if (mode === "login" && params.get("verified") === "1") {
+      setSuccess("Your email is verified. You can sign in now.");
+    } else if (mode === "login" && params.get("reset") === "1") {
+      setSuccess("Your password has been updated. Sign in with your new password.");
+    }
+  }, [mode]);
 
   const c = copy[mode];
 
@@ -100,7 +106,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       }
 
       if (mode === "login") {
-        const result = await apiRequest<any>("/api/auth/login", {
+        const result = await apiRequest<{ nextPath?: string }>("/api/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
@@ -111,20 +117,20 @@ export function AuthForm({ mode }: { mode: Mode }) {
             ? next
             : null;
 
-        router.push(safeNext || result?.nextPath || "/customer/dashboard");
+        router.push(safeNext || result.nextPath || "/customer/dashboard");
         router.refresh();
         return;
       }
 
       if (mode === "verify-email") {
-        const result = await apiRequest<any>("/api/auth/verify-email", {
+        const result = await apiRequest<{ nextPath?: string }>("/api/auth/verify-email", {
           method: "POST",
           body: JSON.stringify({ email, otp }),
         });
 
         router.push(
           `/login?verified=1&next=${encodeURIComponent(
-            result?.nextPath || "/customer/dashboard"
+            result.nextPath || "/customer/dashboard"
           )}`
         );
         return;
@@ -187,54 +193,53 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
       <main className="flex flex-1 items-stretch">
         <div className="mx-auto grid w-full max-w-[1600px] flex-1 lg:grid-cols-2">
-          {/* Brand panel */}
-          <section className="relative flex min-h-[240px] flex-col justify-between overflow-hidden border-b border-styler-line bg-styler-accent-soft/40 px-6 py-8 sm:px-10 lg:min-h-[680px] lg:border-b-0 lg:border-r lg:px-16 lg:py-14 xl:px-24">
-            <div
-              className="pointer-events-none absolute -right-20 top-16 h-72 w-72 rounded-full border border-styler-accent/15 sm:h-96 sm:w-96"
-              aria-hidden="true"
-            />
-            <div
-              className="pointer-events-none absolute -right-8 top-28 h-56 w-56 rounded-full border border-styler-accent/10 sm:h-72 sm:w-72"
-              aria-hidden="true"
-            />
+          <section className="relative isolate flex min-h-[250px] flex-col justify-end overflow-hidden px-5 py-7 sm:min-h-[290px] sm:px-10 sm:py-9 lg:min-h-[680px] lg:justify-between lg:px-12 lg:py-12 xl:px-20">
+            <picture className="absolute inset-0 -z-10">
+              <source media="(max-width: 767px)" srcSet="/images/hero-mobile.webp" />
+              <img
+                src="/images/hero-desktop.webp"
+                alt=""
+                className="h-full w-full object-cover object-[center_45%]"
+              />
+            </picture>
+            <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#10121c]/95 via-[#10121c]/45 to-[#10121c]/10 lg:bg-gradient-to-r lg:from-[#10121c]/90 lg:via-[#10121c]/55 lg:to-[#10121c]/20" />
 
-            <div className="relative z-10 hidden items-center gap-2 text-sm font-semibold lg:flex">
-              <Sparkles size={18} className="text-styler-accent" />
+            <div className="relative z-10 hidden items-center gap-2 text-sm font-semibold text-white lg:flex">
+              <Sparkles size={18} className="text-pink-200" />
               STYLER
             </div>
 
-            <div className="relative z-10 max-w-xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-styler-accent">
+            <div className="relative z-10 max-w-xl text-white">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-200">
                 {c.eyebrow}
               </p>
 
-              <h1 className="mt-4 max-w-lg font-serif text-4xl font-normal leading-tight tracking-tight sm:text-5xl lg:text-6xl xl:text-7xl">
+              <h1 className="mt-3 max-w-lg font-serif text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:mt-4 lg:text-5xl xl:text-6xl">
                 {c.title}
               </h1>
 
-              <p className="mt-5 max-w-md text-sm leading-7 text-styler-ink-soft sm:text-base">
+              <p className="mt-3 max-w-md text-sm leading-6 text-white/85 sm:text-base sm:leading-7 lg:mt-5">
                 {c.description}
               </p>
 
-              <div className="mt-8 flex items-center gap-3 text-sm text-styler-ink-soft">
+              <div className="mt-4 flex items-center gap-2.5 text-xs text-white/90 sm:text-sm lg:mt-8">
                 <ShieldCheck
-                  size={19}
-                  className="shrink-0 text-styler-accent"
+                  size={17}
+                  className="shrink-0 text-pink-200"
                 />
-                <span>A thoughtful, secure way to discover your style.</span>
+                <span>A secure place to find your people and define your style.</span>
               </div>
             </div>
 
-            <p className="relative z-10 mt-8 hidden text-xs text-styler-muted lg:block">
+            <p className="relative z-10 mt-8 hidden text-xs text-white/70 lg:block">
               Find your people. Define your style.
             </p>
           </section>
 
-          {/* Form panel */}
-          <section className="flex items-center justify-center px-5 py-10 sm:px-10 lg:px-12 lg:py-16">
-            <div className="w-full max-w-md">
+          <section className="flex items-start justify-center px-4 py-8 sm:px-8 sm:py-10 lg:items-center lg:px-10 lg:py-12">
+            <div className="w-full max-w-md border border-styler-line bg-styler-surface p-5 shadow-soft sm:p-8 lg:p-9">
               <div className="mb-8">
-                <div className="mb-5 flex h-11 w-11 items-center justify-center bg-styler-accent-soft text-styler-accent">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center bg-styler-accent-soft text-styler-accent">
                   {mode.includes("password") ? (
                     <LockKeyhole size={21} />
                   ) : mode === "verify-email" ? (
@@ -244,7 +249,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   )}
                 </div>
 
-                <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">
+                <h2 className="font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
                   {mode === "login"
                     ? "Sign in"
                     : mode === "register"
@@ -283,7 +288,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                             type="button"
                             aria-pressed={role === value}
                             onClick={() => setRole(value)}
-                            className={`border px-3 py-3 text-left text-sm transition-colors ${
+                            className={`border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-styler-accent ${
                               role === value
                                 ? "border-styler-accent bg-styler-accent-soft/50 text-styler-ink"
                                 : "border-styler-line text-styler-ink-soft hover:border-styler-accent"
@@ -303,6 +308,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
                       onChange={(e) => setName(e.target.value)}
                       required
                       minLength={2}
+                      maxLength={100}
+                      inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
                     />
                   </>
                 )}
@@ -315,6 +322,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  maxLength={254}
+                  inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
                 />
 
                 {(mode === "verify-email" || mode === "reset-password") && (
@@ -330,6 +339,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                     required
                     minLength={6}
                     maxLength={6}
+                    inputClassName="rounded-sm px-3 py-3 text-sm tracking-[0.25em] focus:ring-2 focus:ring-pink-500/20"
                   />
                 )}
 
@@ -346,6 +356,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       minLength={8}
+                      maxLength={128}
+                      inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
                     />
 
                     {(mode === "register" || mode === "reset-password") && (
@@ -358,6 +370,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
                         minLength={8}
+                        maxLength={128}
+                        inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
                       />
                     )}
                   </>
@@ -377,7 +391,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 <Button
                   type="submit"
                   loading={loading}
-                  className="mt-2 w-full justify-center"
+                  className="mt-2 w-full justify-center rounded-sm py-3 text-sm"
                 >
                   {mode === "login"
                     ? "Sign in"
@@ -391,6 +405,16 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   <ArrowRight size={17} />
                 </Button>
               </form>
+
+              {mode === "forgot-password" && success && (
+                <Link
+                  href={`/reset-password?email=${encodeURIComponent(email)}`}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 border border-styler-line px-4 py-3 text-sm font-semibold text-styler-ink transition-colors hover:border-styler-accent hover:text-styler-accent"
+                >
+                  Enter reset code
+                  <ArrowRight size={16} />
+                </Link>
+              )}
 
               {mode === "verify-email" && (
                 <button
@@ -426,17 +450,19 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 )}
               </p>
 
-              <p className="mt-8 border-t border-styler-line pt-5 text-center text-xs leading-6 text-styler-muted">
-                By continuing, you agree to our{" "}
-                <Link href="/terms" className="underline hover:text-styler-ink">
-                  Terms
-                </Link>{" "}
-                and{" "}
-                <Link href="/privacy" className="underline hover:text-styler-ink">
-                  Privacy Policy
-                </Link>
-                .
-              </p>
+              {mode === "register" && (
+                <p className="mt-8 border-t border-styler-line pt-5 text-center text-xs leading-6 text-styler-muted">
+                  By creating an account, you agree to our{" "}
+                  <Link href="/terms" className="underline hover:text-styler-ink">
+                    Terms
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" className="underline hover:text-styler-ink">
+                    Privacy Policy
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
           </section>
         </div>

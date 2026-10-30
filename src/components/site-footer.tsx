@@ -35,13 +35,9 @@ export function SiteFooter() {
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] lg:gap-12">
           <div>
-            <Link
-              href="/"
-              aria-label="Styler home"
-              className="inline-flex"
-            >
+            <div className="inline-flex">
               <Logo />
-            </Link>
+            </div>
 
             <p className="mt-4 max-w-sm text-sm leading-7 text-styler-ink-soft">
               Your style, your way. Discover fashion professionals,

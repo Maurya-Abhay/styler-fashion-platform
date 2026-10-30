@@ -108,13 +108,9 @@ export function SiteHeader() {
     <>
       <header className="sticky top-0 z-50 border-b border-styler-line bg-styler-canvas/95 backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/"
-            aria-label="Styler home"
-            className="shrink-0"
-          >
+          <div className="shrink-0">
             <Logo />
-          </Link>
+          </div>
 
           <nav
             aria-label="Main navigation"

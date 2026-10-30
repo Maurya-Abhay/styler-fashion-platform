@@ -5,6 +5,8 @@ export type Coordinates = {
 
 export type ReverseGeocodedAddress = {
   line1: string;
+  houseNumber?: string;
+  street?: string;
   city: string;
   state: string;
   postalCode: string;
@@ -45,15 +47,17 @@ export function normalizeNominatimAddress(
     .filter(Boolean)
     .join(" ");
 
-  if (!address || !locality || !address.state || !address.postcode) {
+  if (!address || !locality) {
     return null;
   }
 
   return {
     line1: street || address.neighbourhood || address.suburb || locality,
+    houseNumber: address.house_number,
+    street: address.road || address.pedestrian,
     city: locality,
-    state: address.state,
-    postalCode: address.postcode,
+    state: address.state || "",
+    postalCode: address.postcode || "",
     country: address.country || "India",
     ...coordinates,
   };

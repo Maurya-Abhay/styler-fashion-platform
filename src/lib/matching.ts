@@ -26,12 +26,8 @@ export function servesWithinRadius(profile: any, request: any): boolean {
   const address = request.addressSnapshot;
   if (typeof address?.latitude === "number" && typeof address?.longitude === "number") {
     const location = profile.baseLocation;
-    if (
-      typeof location?.latitude === "number"
-      && typeof location?.longitude === "number"
-    ) {
-      return isWithinSearchRadius(address, location, Number(request.searchRadiusKm ?? 25));
-    }
+    if (typeof location?.latitude !== "number" || typeof location?.longitude !== "number") return false;
+    return isWithinSearchRadius(address, location, Number(request.searchRadiusKm ?? 25));
   }
   return servesAddress(profile, address);
 }

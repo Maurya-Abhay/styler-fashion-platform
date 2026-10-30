@@ -5,6 +5,7 @@ const SavedAddressSchema = new Schema(
     label: { type: String, trim: true, maxlength: 40, default: "Home" },
     recipientName: { type: String, trim: true, maxlength: 100 },
     phone: { type: String, trim: true, maxlength: 20 },
+    houseNumber: { type: String, trim: true, maxlength: 100 },
     line1: { type: String, required: true, trim: true, maxlength: 200 },
     line2: { type: String, trim: true, maxlength: 200 },
     landmark: { type: String, trim: true, maxlength: 150 },
@@ -56,6 +57,10 @@ export const UserSchema = new Schema(
     emailVerifiedAt: { type: Date, default: null },
     phoneVerifiedAt: { type: Date, default: null }, // Reserved for later phone verification.
     profileImageUrl: { type: String, trim: true, maxlength: 2048 },
+    notificationPreferences: {
+      email: { type: Boolean, default: true },
+      webPush: { type: Boolean, default: true },
+    },
     savedAddresses: { type: [SavedAddressSchema], default: [] },
     favoriteProfessionalIds: {
       type: [{ type: Schema.Types.ObjectId, ref: "ProfessionalProfile" }],

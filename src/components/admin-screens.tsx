@@ -50,40 +50,54 @@ export function AdminDashboard() {
   }, [refresh, periodDays]);
 
   const stats = [
-    { 
-      label: "Total Users", 
-      value: data?.users ?? 0, 
-      icon: Users, 
-      trendUp: true,
+    {
+      label: "Total Users",
+      value: data?.users ?? 0,
+      icon: Users,
       bgColor: "bg-pink-100 dark:bg-pink-900/30",
       textColor: "text-pink-600 dark:text-pink-400"
     },
-    { 
-      label: "Total Professionals", 
-      value: data?.approvedProfessionals ?? 0, 
-      icon: BadgeCheck, 
-      trendUp: true,
+    {
+      label: "Approved Professionals",
+      value: data?.approvedProfessionals ?? 0,
+      icon: BadgeCheck,
       bgColor: "bg-blue-100 dark:bg-blue-900/30",
       textColor: "text-blue-600 dark:text-blue-400"
     },
-    { 
-      label: "Total Bookings", 
-      value: data?.bookings ?? 0, 
-      icon: CalendarDays, 
-      trendUp: true,
+    {
+      label: "Total Bookings",
+      value: data?.bookings ?? 0,
+      icon: CalendarDays,
       bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
       textColor: "text-emerald-600 dark:text-emerald-400"
     },
-    { 
-      label: `Revenue · Last ${periodDays} Days`, 
-      value: data?.platformRevenuePaise ? (data.platformRevenuePaise / 100) : 0, 
-      icon: WalletCards, 
-      trendUp: true,
+    {
+      label: `Platform Revenue · ${periodDays} Days`,
+      value: data?.platformRevenuePaise ?? 0,
+      icon: WalletCards,
       isMoney: true,
       bgColor: "bg-amber-100 dark:bg-amber-900/30",
       textColor: "text-amber-600 dark:text-amber-400"
-    }
+    },
+    {
+      label: "Applications to Review",
+      value: data?.pendingApplications ?? 0,
+      icon: FileCheck2,
+      bgColor: "bg-violet-100 dark:bg-violet-900/30",
+      textColor: "text-violet-600 dark:text-violet-400"
+    },
+    {
+      label: "Open Requests",
+      value: data?.activeRequests ?? 0,
+      icon: Activity,
+      bgColor: "bg-cyan-100 dark:bg-cyan-900/30",
+      textColor: "text-cyan-600 dark:text-cyan-400"
+    },
   ];
+  const maxDailyRevenue = Math.max(...(data?.trend || []).map((item: any) => Number(item.revenuePaise) || 0), 1);
+  const maxDailyBookings = Math.max(...(data?.trend || []).map((item: any) => Number(item.bookings) || 0), 1);
+  const greetingHour = new Date().getHours();
+  const greeting = greetingHour < 12 ? "Good morning" : greetingHour < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <div className="space-y-6">
@@ -91,7 +105,7 @@ export function AdminDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            Good Morning, Admin! <span className="text-xl">👋</span>
+            {greeting}, Admin <span className="text-xl">👋</span>
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Here's what's happening with your platform today.
@@ -116,7 +130,7 @@ export function AdminDashboard() {
       ) : (
         <>
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             {stats.map((s) => {
               const Icon = s.icon;
               return (
@@ -128,7 +142,7 @@ export function AdminDashboard() {
                     <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">{s.label}</span>
                     <div className="flex items-end gap-2 mt-1">
                       <strong className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {s.isMoney ? money(s.value * 100) : Number(s.value).toLocaleString("en-IN")}
+                        {s.isMoney ? money(s.value) : Number(s.value).toLocaleString("en-IN")}
                       </strong>
                     </div>
                   </div>
@@ -143,7 +157,7 @@ export function AdminDashboard() {
             {/* Left Column (Charts & Bookings) */}
             <div className="xl:col-span-2 space-y-6">
               
-              {/* Financial Snapshot (Replacing Chart for now with API data) */}
+              {/* Financial Summary */}
               <Card className="rounded p-5 border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b] shadow-sm">
                 <div className="flex justify-between items-center mb-5">
                   <h2 className="text-base font-bold text-gray-900 dark:text-white">Revenue Overview</h2>
@@ -164,7 +178,9 @@ export function AdminDashboard() {
                   <div className="p-4 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#121620]">
                     <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Captured Payment Volume</span>
                     <strong className="block text-2xl mt-1 text-gray-900 dark:text-white">{money(data.capturedPaymentVolumePaise)}</strong>
-                    <small className="block mt-1 text-[11px] text-gray-400">Gross customer payment volume.</small>
+                    <small className="block mt-1 text-[11px] text-gray-400">
+                      Gross volume across {Number(data.capturedPaymentCount || 0).toLocaleString("en-IN")} captured payments.
+                    </small>
                   </div>
                   <div className="p-4 rounded border border-pink-100 dark:border-pink-900/30 bg-pink-50/50 dark:bg-pink-900/10">
                     <span className="block text-xs font-medium text-pink-600 dark:text-pink-400">Platform Commission</span>
@@ -177,6 +193,83 @@ export function AdminDashboard() {
                   <strong className="text-sm text-gray-900 dark:text-white">
                     {money(data.pendingPayoutPaise)} · {data.pendingPayoutCount || 0} payout(s)
                   </strong>
+                </div>
+              </Card>
+
+              <Card className="rounded p-5 border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b] shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900 dark:text-white">Platform trends</h2>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Daily bookings and recorded platform revenue · last {periodDays} days
+                    </p>
+                  </div>
+                  <Link href="/admin/reports" className="text-xs font-semibold text-pink-600 dark:text-pink-400 hover:underline">
+                    Full reports <ArrowRight size={12} className="inline" />
+                  </Link>
+                </div>
+                <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
+                      <span>Commission / platform fee</span>
+                      <span>{money(data.platformRevenuePaise)}</span>
+                    </div>
+                    <div className="flex h-28 items-end gap-1 border-b border-l border-gray-200 px-2 pb-1 dark:border-gray-700">
+                      {(data.trend || []).map((item: any, index: number) => {
+                        const amount = Number(item.revenuePaise) || 0;
+                        const height = amount ? Math.max((amount / maxDailyRevenue) * 100, 5) : 2;
+                        const showLabel = periodDays === "7" || index % 5 === 0 || index === data.trend.length - 1;
+                        return (
+                          <div key={item.date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+                            <div
+                              className={`w-full rounded-t-sm bg-pink-500 ${amount ? "" : "opacity-20"}`}
+                              style={{ height: `${height}%` }}
+                              title={`${item.date}: ${money(amount)} revenue`}
+                              role="img"
+                              aria-label={`${item.date}: ${money(amount)} revenue`}
+                            />
+                            <span className="mt-1 h-3 text-[8px] text-gray-400">
+                              {showLabel ? new Date(`${item.date}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }) : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
+                      <span>Bookings created</span>
+                      <span>{Number(data.bookings || 0).toLocaleString("en-IN")} total</span>
+                    </div>
+                    <div className="flex h-28 items-end gap-1 border-b border-l border-gray-200 px-2 pb-1 dark:border-gray-700">
+                      {(data.trend || []).map((item: any, index: number) => {
+                        const count = Number(item.bookings) || 0;
+                        const height = count ? Math.max((count / maxDailyBookings) * 100, 5) : 2;
+                        const showLabel = periodDays === "7" || index % 5 === 0 || index === data.trend.length - 1;
+                        return (
+                          <div key={item.date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+                            <div
+                              className={`w-full rounded-t-sm bg-emerald-500 ${count ? "" : "opacity-20"}`}
+                              style={{ height: `${height}%` }}
+                              title={`${item.date}: ${count} bookings`}
+                              role="img"
+                              aria-label={`${item.date}: ${count} bookings`}
+                            />
+                            <span className="mt-1 h-3 text-[8px] text-gray-400">
+                              {showLabel ? new Date(`${item.date}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }) : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+                  {Object.entries(data.bookingStatusCounts || {}).map(([status, count]) => (
+                    <span key={status} className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      {humanize(status)} · {Number(count).toLocaleString("en-IN")}
+                    </span>
+                  ))}
                 </div>
               </Card>
 
@@ -212,6 +305,46 @@ export function AdminDashboard() {
 
             {/* Right Column (Quick Actions & Activity) */}
             <div className="space-y-6">
+
+              <Card className="rounded p-5 border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b] shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">Recent Bookings</h2>
+                  <Link href="/admin/bookings" className="inline-flex items-center gap-1 text-xs font-medium text-pink-600 dark:text-pink-400 hover:underline">
+                    View all <ArrowRight size={12} />
+                  </Link>
+                </div>
+                {data.recentBookings?.length ? (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {data.recentBookings.map((booking: any) => (
+                      <Link
+                        key={booking._id}
+                        href={`/admin/bookings/${booking._id}`}
+                        className="block py-3 first:pt-0 last:pb-0 hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <strong className="block truncate text-xs text-gray-900 dark:text-white">
+                              {booking.serviceSnapshot?.title || "Service booking"}
+                            </strong>
+                            <span className="mt-1 block truncate text-[10px] text-gray-500 dark:text-gray-400">
+                              {booking.customerId?.name || "Customer"} · {booking.professionalId?.displayName || "Professional"}
+                            </span>
+                            <span className="mt-1 block text-[10px] text-gray-400">{dateTime(booking.startAt)}</span>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <StatusBadge status={booking.status} />
+                            <strong className="mt-1 block text-[10px] text-gray-900 dark:text-white">
+                              {money(booking.priceSnapshot?.totalPaise)}
+                            </strong>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-5 text-center text-xs text-gray-500 dark:text-gray-400">No bookings yet.</p>
+                )}
+              </Card>
               
               {/* Quick Actions */}
               <Card className="rounded p-5 border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b] shadow-sm">
@@ -244,6 +377,13 @@ export function AdminDashboard() {
                     </div>
                     <strong className="block text-xs text-gray-900 dark:text-white">Generate Reports</strong>
                     <span className="block text-[10px] text-gray-500 mt-0.5 line-clamp-1">Platform analytics</span>
+                  </Link>
+                  <Link href="/admin/payouts" className="p-3 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#121620] hover:border-amber-200 dark:hover:border-amber-900/50 transition group">
+                    <div className="h-8 w-8 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                      <WalletCards size={16} />
+                    </div>
+                    <strong className="block text-xs text-gray-900 dark:text-white">Manage Payouts</strong>
+                    <span className="block text-[10px] text-gray-500 mt-0.5 line-clamp-1">{data.pendingPayoutCount || 0} pending</span>
                   </Link>
                 </div>
               </Card>
@@ -766,13 +906,18 @@ export function AdminSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
     apiRequest<any>("/api/admin/settings")
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .then((settings) => { if (active) setData(settings); })
+      .catch((e) => { if (active) setError(e.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
 
   function update(k: string, v: any) {
     setData((d: any) => ({ ...d, [k]: v }));
@@ -811,14 +956,35 @@ export function AdminSettings() {
   }
 
   if (loading) return <LoadingBlock />;
+  if (!data) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4">
+        <Alert tone="error">{error || "Marketplace settings could not be loaded."}</Alert>
+        <Button variant="secondary" onClick={() => setReload((value) => value + 1)}>
+          <RefreshCw size={14} /> Try again
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold font-serif text-gray-900 dark:text-white mt-0.5">Marketplace Settings</h1>
-        <p className="text-xs text-gray-500 dark:text-gray-400">Configure marketplace response rules, commissions, fees, and cancellation policies.</p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-5 pb-20">
+      <Card className="rounded border border-gray-100 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-[#1a1f2b] sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400"><SlidersHorizontal size={18} /></span>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-pink-600 dark:text-pink-400">Platform controls</p>
+              <h1 className="mt-1 text-xl font-bold font-serif text-gray-900 dark:text-white">Marketplace Settings</h1>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-gray-500 dark:text-gray-400">Manage pricing, matching windows and cancellation rules. Changes apply to new bookings; existing booking price snapshots are preserved.</p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded border border-gray-100 bg-gray-50 px-3 py-2 text-right dark:border-gray-800 dark:bg-[#121620]">
+            <span className="block text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Settings revision</span>
+            <strong className="block text-sm text-gray-900 dark:text-white">v{data.settingsVersion || 1}</strong>
+          </div>
+        </div>
+      </Card>
 
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
@@ -895,11 +1061,11 @@ export function AdminSettings() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <Field label="Max Offers Per Request (1–10)" type="number" min="1" max="10" value={data?.maxOffersPerRequest || 10} onChange={(e) => update("maxOffersPerRequest", Number(e.target.value))} />
-            <Field label="Offer Window (minutes)" type="number" min="1" max="10" value={data?.offerWindowMinutes || 10} onChange={(e) => update("offerWindowMinutes", Number(e.target.value))} />
-            <Field label="Payment Hold Window (minutes)" type="number" min="1" max="60" value={data?.paymentHoldMinutes || 10} onChange={(e) => update("paymentHoldMinutes", Number(e.target.value))} />
-            <Field label="Advance Booking Limit (days)" type="number" min="1" max="180" value={data?.maxAdvanceBookingDays || 30} onChange={(e) => update("maxAdvanceBookingDays", Number(e.target.value))} />
-            <Field label="Travel Buffer (minutes)" type="number" min="0" max="240" value={data?.defaultTravelBufferMinutes || 15} onChange={(e) => update("defaultTravelBufferMinutes", Number(e.target.value))} />
+            <Field label="Max Offers Per Request (1–10)" type="number" min="1" max="10" value={data?.maxOffersPerRequest ?? 10} onChange={(e) => update("maxOffersPerRequest", Number(e.target.value))} />
+            <Field label="Offer Window (minutes)" type="number" min="1" max="10" value={data?.offerWindowMinutes ?? 10} onChange={(e) => update("offerWindowMinutes", Number(e.target.value))} />
+            <Field label="Payment Hold Window (minutes)" type="number" min="1" max="60" value={data?.paymentHoldMinutes ?? 10} onChange={(e) => update("paymentHoldMinutes", Number(e.target.value))} />
+            <Field label="Advance Booking Limit (days)" type="number" min="1" max="180" value={data?.maxAdvanceBookingDays ?? 30} onChange={(e) => update("maxAdvanceBookingDays", Number(e.target.value))} />
+            <Field label="Travel Buffer (minutes)" type="number" min="0" max="240" value={data?.defaultTravelBufferMinutes ?? 15} onChange={(e) => update("defaultTravelBufferMinutes", Number(e.target.value))} />
           </div>
         </Card>
 
@@ -945,12 +1111,18 @@ export function AdminSettings() {
             </div>
           </div>
 
-          <div className="pt-2 flex justify-end">
-            <Button loading={busy} type="submit">
-              Save Settings <ShieldCheck size={14} className="ml-1" />
-            </Button>
-          </div>
         </Card>
+        <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-[#1a1f2b]/95 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <div>
+            <strong className="block text-xs text-gray-900 dark:text-white">Review your changes before saving</strong>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+              Saving creates platform settings revision v{Number(data.settingsVersion || 1) + 1}.
+            </span>
+          </div>
+          <Button loading={busy} type="submit">
+            Save marketplace settings <ShieldCheck size={14} className="ml-1" />
+          </Button>
+        </div>
       </form>
     </div>
   );

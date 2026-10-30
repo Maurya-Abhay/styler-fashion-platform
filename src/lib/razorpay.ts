@@ -260,7 +260,7 @@ async function recordCapturedPaymentLedger(payment: any, booking: any, session: 
 
 async function confirmCapturedPayment(paymentId: unknown, razorpayPayment: RazorpayPayment) {
   const session = await mongoose.startSession();
-  let result: { bookingId: string; customerId: string; professionalUserId: string; confirmed: boolean } | null = null;
+  let result: { bookingId: string; paymentId: string; customerId: string; professionalUserId: string; confirmed: boolean } | null = null;
   try {
     await session.withTransaction(async () => {
       const payment = await Payment.findById(paymentId).session(session);
@@ -286,7 +286,7 @@ async function confirmCapturedPayment(paymentId: unknown, razorpayPayment: Razor
       const alreadyConfirmed = ["confirmed", "in_progress", "completed"].includes(booking.status);
       const canConfirm = booking.status === "pending_payment" && (!booking.paymentDueAt || booking.paymentDueAt > now);
       if (alreadyConfirmed) {
-        result = { bookingId: String(booking._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: true };
+        result = { bookingId: String(booking._id), paymentId: String(payment._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: true };
       } else if (canConfirm) {
         const confirmed = await Booking.updateOne(
           { _id: booking._id, status: "pending_payment", paymentDueAt: { $gt: now } },
@@ -299,17 +299,17 @@ async function confirmCapturedPayment(paymentId: unknown, razorpayPayment: Razor
             { $set: { status: "confirmed" }, $unset: { expiresAt: 1 } },
             { session },
           );
-          result = { bookingId: String(booking._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: true };
+          result = { bookingId: String(booking._id), paymentId: String(payment._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: true };
         } else {
-          result = { bookingId: String(booking._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: false };
+          result = { bookingId: String(booking._id), paymentId: String(payment._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: false };
         }
       } else {
-        result = { bookingId: String(booking._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: false };
+        result = { bookingId: String(booking._id), paymentId: String(payment._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: false };
       }
       await recordCapturedPaymentLedger(payment, booking, session);
     });
   } finally { await session.endSession(); }
-  const reconciled = result as unknown as { bookingId: string; customerId: string; professionalUserId: string; confirmed: boolean } | null;
+  const reconciled = result as unknown as { bookingId: string; paymentId: string; customerId: string; professionalUserId: string; confirmed: boolean } | null;
   if (!reconciled) throw new AppError("Could not reconcile captured payment.", 500, "PAYMENT_RECONCILIATION_FAILED");
   const booking = await Booking.findById(reconciled.bookingId).select("professionalId").lean();
   if (booking) {
@@ -318,11 +318,11 @@ async function confirmCapturedPayment(paymentId: unknown, razorpayPayment: Razor
   }
   if (reconciled.confirmed) {
     await Promise.allSettled([
-      notifyUser({ recipientUserId: reconciled.customerId, type: "booking_confirmed", title: "Booking confirmed", message: "Your payment has been verified and your Styler booking is confirmed.", channels: ["in_app", "email"], data: { bookingId: reconciled.bookingId }, dedupeKey: `booking-confirmed-customer:${reconciled.bookingId}` }),
-      ...(reconciled.professionalUserId ? [notifyUser({ recipientUserId: reconciled.professionalUserId, type: "booking_confirmed", title: "Booking confirmed", message: "Customer payment has been verified. Your Styler booking is confirmed.", channels: ["in_app", "email", "web_push"], data: { bookingId: reconciled.bookingId }, dedupeKey: `booking-confirmed-professional:${reconciled.bookingId}` })] : []),
+      notifyUser({ recipientUserId: reconciled.customerId, type: "booking_confirmed", title: "Booking confirmed", message: "Your payment has been verified and your Styler booking is confirmed. Your receipt is available in Payment History.", channels: ["in_app", "email"], data: { bookingId: reconciled.bookingId, paymentId: reconciled.paymentId, receiptPath: `/api/receipts/payment/${reconciled.paymentId}` }, dedupeKey: `booking-confirmed-customer:${reconciled.bookingId}` }),
+      ...(reconciled.professionalUserId ? [notifyUser({ recipientUserId: reconciled.professionalUserId, type: "booking_confirmed", title: "Booking confirmed", message: "Customer payment has been verified. Your booking is confirmed; your payout receipt will be available in Earnings after transfer.", channels: ["in_app", "email", "web_push"], data: { bookingId: reconciled.bookingId }, dedupeKey: `booking-confirmed-professional:${reconciled.bookingId}` })] : []),
     ]);
   } else {
-    await notifyUser({ recipientUserId: reconciled.customerId, type: "payment_success", title: "Payment received — booking review needed", message: "The payment provider reports your payment as captured, but this booking could not be confirmed automatically. Styler support needs to review the payment and arrange a refund or resolution.", channels: ["in_app", "email"], data: { bookingId: reconciled.bookingId }, dedupeKey: `late-payment-review:${reconciled.bookingId}` }).catch(() => undefined);
+    await notifyUser({ recipientUserId: reconciled.customerId, type: "payment_success", title: "Payment received — booking review needed", message: "The payment provider reports your payment as captured, but this booking could not be confirmed automatically. Your receipt is available in Payment History; Styler support needs to review the booking.", channels: ["in_app", "email"], data: { bookingId: reconciled.bookingId, paymentId: reconciled.paymentId, receiptPath: `/api/receipts/payment/${reconciled.paymentId}` }, dedupeKey: `late-payment-review:${reconciled.bookingId}` }).catch(() => undefined);
   }
   return { ...reconciled, paymentStatus: "captured" as const, requiresManualReview: !reconciled.confirmed };
 }

@@ -81,13 +81,23 @@ const CATEGORY_IMAGE_BY_ID: Record<string, string> = {
   other: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=700&q=85",
 };
 
-const CATEGORIES = MARKETPLACE_CATEGORIES.map((category) => ({
+const CATEGORY_GROUP_ORDER: Record<string, number> = {
+  fashion: 0,
+  beauty: 1,
+  wellness: 2,
+  home: 3,
+  repairs: 4,
+};
+
+const CATEGORIES = [...MARKETPLACE_CATEGORIES]
+  .sort((a, b) => CATEGORY_GROUP_ORDER[a.group] - CATEGORY_GROUP_ORDER[b.group])
+  .map((category) => ({
   id: category.slug,
   label: category.label,
   description: category.blurb,
   icon: CATEGORY_ICON_BY_ID[category.slug] || Sparkles,
   image: CATEGORY_IMAGE_BY_ID[category.slug],
-}));
+  }));
 
 const SERVICE_FALLBACK_IMAGES: Record<string, string> = Object.fromEntries(
   CATEGORIES.map((item) => [item.id, item.image.replace("w=700", "w=900")])
@@ -127,6 +137,8 @@ export function SiteHome() {
   const [professionals, setProfessionals] = useState<ProfessionalSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const featuredProfessional = professionals[0];
+  const featuredProfessionalName = featuredProfessional?.displayName || featuredProfessional?.name;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -164,109 +176,164 @@ export function SiteHome() {
     <div className="min-h-screen bg-styler-canvas text-styler-ink antialiased">
       <SiteHeader />
       <main>
-        {/* Full-screen fashion hero */}
-        <section className="relative flex min-h-[calc(100svh-64px)] items-center justify-center overflow-hidden bg-[#1a0818]">
-          <img
-            src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=2200&q=90"
-            alt="Elegant Indian bridal fashion and detailed embroidery"
-            fetchPriority="high"
-            className="absolute inset-0 h-full w-full object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#1a0818]/65 via-[#1a0818]/65 to-[#1a0818]/95" />
+        <section className="relative isolate overflow-hidden bg-[#f5f8ff] dark:bg-[#10121c]">
+          <div className="absolute inset-0 hidden lg:block">
+            <picture className="absolute inset-0">
+              <img
+                src="/images/hero-desktop.webp"
+                alt=""
+                fetchPriority="high"
+                className="h-full w-full object-cover object-[62%_center]"
+              />
+            </picture>
+            <div className="absolute inset-0 bg-gradient-to-r from-[#f5f8ff] via-[#f5f8ff]/95 via-40% to-transparent to-75% dark:from-[#10121c] dark:via-[#10121c]/90" />
+            <div className="absolute inset-y-0 left-[42%] w-[18%] bg-gradient-to-r from-[#f5f8ff]/70 to-transparent dark:from-[#10121c]/60" />
+          </div>
 
-          <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-pink-200 backdrop-blur-md">
-              <Sparkles size={15} /> Your style, your people
-            </span>
-
-            <h1 className="mx-auto mt-7 max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-              Your idea deserves a{" "}
-              <span className="font-serif italic text-pink-300">perfect fit.</span>
-            </h1>
-
-            <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/85 sm:text-lg">
-              Discover trusted fashion designers and tailors for bridalwear,
-              custom outfits, alterations and personal styling.
-            </p>
-
-            <form
-              onSubmit={submitSearch}
-              role="search"
-              className="mx-auto mt-9 flex max-w-3xl flex-col gap-2 rounded-2xl border border-white/30 bg-white p-2.5 shadow-2xl sm:flex-row sm:items-center"
-            >
-              <label className="flex min-w-0 flex-1 items-center gap-3 px-3">
-                <Search size={20} className="shrink-0 text-styler-accent" />
-                <input
-                  name="q"
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search tailors, bridalwear, styling..."
-                  aria-label="Search fashion services"
-                  className="min-w-0 flex-1 bg-transparent py-3 text-sm text-styler-ink outline-none placeholder:text-styler-muted"
-                />
-              </label>
-
-              <span className="hidden h-8 w-px bg-styler-line sm:block" />
-
-              <label className="flex min-w-0 items-center gap-3 px-3 sm:w-40">
-                <MapPin size={19} className="shrink-0 text-styler-accent" />
-                <input
-                  name="city"
-                  value={city}
-                  onChange={(event) => setCity(event.target.value)}
-                  placeholder="Your city"
-                  aria-label="City"
-                  className="w-full min-w-0 bg-transparent py-3 text-sm text-styler-ink outline-none placeholder:text-styler-muted"
-                />
-              </label>
-
-              <button
-                type="submit"
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-styler-accent px-6 py-3.5 text-sm font-bold text-white transition hover:bg-styler-accent-strong"
-              >
-                Find my designer <ArrowUpRight size={17} />
-              </button>
-            </form>
-
-            <div className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-3 text-xs font-medium text-white/90">
-              <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-pink-300" /> Approved professionals</span>
-              <span className="inline-flex items-center gap-2"><ShieldCheck size={15} className="text-pink-300" /> Secure payments</span>
-              <span className="inline-flex items-center gap-2"><Clock3 size={15} className="text-pink-300" /> Quick matching</span>
+          <div className="relative h-[min(96vw,440px)] min-h-[320px] overflow-hidden lg:hidden">
+            <picture className="absolute inset-0">
+              <source media="(max-width: 767px)" srcSet="/images/hero-mobile.webp" />
+              <img
+                src="/images/hero-desktop.webp"
+                alt="A fashion professional fitting a detailed bridal outfit in her studio"
+                fetchPriority="high"
+                className="h-full w-full object-cover object-[center_42%]"
+              />
+            </picture>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-[#f5f8ff] dark:to-[#10121c]" />
+            <div className="absolute bottom-8 right-4 inline-flex items-center gap-2 rounded-lg border border-white/80 bg-white/95 px-3 py-2 shadow-lg">
+              <span className="grid h-8 w-8 place-items-center rounded-md bg-pink-50 text-styler-accent"><Scissors size={15} /></span>
+              <span>
+                <strong className="block text-[10px] leading-4 text-[#17264a]">Made for your moment</strong>
+                <span className="block text-[9px] text-slate-500">Find your fashion expert</span>
+              </span>
+              <ArrowRight size={13} className="ml-1 text-[#2459c7]" />
             </div>
+          </div>
+
+          <div className="relative z-10 mx-auto flex w-full max-w-7xl items-center px-4 pb-10 sm:px-6 sm:pb-12 lg:min-h-[calc(100svh-64px)] lg:px-8 lg:py-12">
+            <div className="relative -mt-12 w-full max-w-[610px] lg:mt-0 lg:w-[54%]">
+              <span className="inline-flex items-center gap-2 rounded-md border border-blue-100 bg-white/85 px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#2459c7] shadow-sm backdrop-blur sm:text-xs">
+                <Sparkles size={14} className="text-styler-accent" /> Your style, our priority
+              </span>
+
+              <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif" }} className="mt-4 max-w-[620px] text-[2.55rem] font-bold leading-[1.06] tracking-[-0.035em] text-[#142652] dark:text-white sm:text-5xl lg:mt-6 lg:text-[3.75rem]">
+                Find your perfect{" "}
+                <span className="text-[#3973ef] dark:text-blue-300">fashion professional.</span>
+              </h1>
+
+              <p className="mt-4 max-w-[500px] text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base sm:leading-7 lg:mt-5">
+                From bridal wear and custom outfits to alterations and personal styling, meet trusted professionals who bring your vision to life.
+              </p>
+
+              <form
+                onSubmit={submitSearch}
+                role="search"
+                className="mt-5 flex flex-col gap-1.5 rounded-lg border border-transparent bg-white p-2 shadow-[0_12px_32px_rgba(27,57,112,0.12)] transition focus-within:border-blue-200 focus-within:ring-4 focus-within:ring-blue-100/70 sm:mt-6 sm:p-2.5 lg:mt-8 lg:flex-row lg:items-center dark:focus-within:border-blue-900 dark:focus-within:ring-blue-950/60"
+              >
+                <label className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5">
+                  <Search size={18} className="shrink-0 text-[#3973ef]" />
+                  <input
+                    name="q"
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Bridal wear, tailoring, styling..."
+                    aria-label="Search fashion services"
+                    className="min-w-0 flex-1 bg-transparent py-3 text-sm text-[#17264a] outline-none placeholder:text-slate-400 focus-visible:!outline-none"
+                  />
+                </label>
+
+                <span aria-hidden="true" className="mx-2 hidden h-8 w-px bg-slate-200 lg:block" />
+
+                <label className="flex min-w-0 items-center gap-2.5 px-2.5 lg:w-36">
+                  <MapPin size={17} className="shrink-0 text-[#3973ef]" />
+                  <input
+                    name="city"
+                    value={city}
+                    onChange={(event) => setCity(event.target.value)}
+                    placeholder="Your city"
+                    aria-label="City"
+                    className="w-full min-w-0 bg-transparent py-3 text-sm text-[#17264a] outline-none placeholder:text-slate-400 focus-visible:!outline-none"
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-[#2463eb] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#174fc9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2463eb] lg:px-5"
+                >
+                  Find a professional <ArrowUpRight size={16} />
+                </button>
+              </form>
+
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium text-slate-600 dark:text-slate-300 sm:mt-5 sm:gap-x-5 sm:text-xs">
+                <span className="inline-flex items-center gap-1.5"><BadgeCheck size={14} className="text-[#3973ef]" /> Verified experts</span>
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#3973ef]" /> Secure booking</span>
+                <span className="inline-flex items-center gap-1.5"><Clock3 size={14} className="text-[#3973ef]" /> Quick matching</span>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2 lg:mt-7">
+                <span className="mr-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">Popular:</span>
+                {["lehenga_stitching", "custom_clothing", "alterations"].map((category) => (
+                  <Link
+                    key={category}
+                    href={`/services/${category}`}
+                    className="rounded-md border border-blue-100 bg-white/75 px-3 py-1.5 text-[10px] font-semibold text-[#29477f] transition hover:border-blue-300 hover:bg-white hover:text-[#174fc9] dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
+                  >
+                    {categoryName(category)}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="pointer-events-none absolute right-[4.5%] top-[15%] z-10 hidden rounded-lg border border-white/80 bg-white/95 px-4 py-3 shadow-[0_12px_35px_rgba(25,49,91,0.12)] backdrop-blur lg:block">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-md bg-pink-50 text-styler-accent"><Shirt size={19} /></span>
+              <span>
+                <strong className="block text-xs text-[#17264a]">Bridal wear</strong>
+                <span className="mt-0.5 block text-[10px] text-slate-500">Designed around you</span>
+              </span>
+              <ChevronRight size={15} className="text-[#3973ef]" />
+            </div>
+          </div>
+          <div className="pointer-events-none absolute bottom-[14%] right-[4.5%] z-10 hidden items-center gap-3 rounded-lg border border-white/80 bg-white/95 px-4 py-3 shadow-[0_12px_35px_rgba(25,49,91,0.12)] backdrop-blur lg:flex">
+            <span className="grid h-9 w-9 place-items-center rounded-md bg-blue-50 text-[#3973ef]"><BadgeCheck size={18} /></span>
+            <span>
+              <strong className="block max-w-40 truncate text-[11px] text-[#17264a]">Approved fashion experts</strong>
+              <span className="mt-0.5 block text-[10px] text-slate-500">{featuredProfessional?.city ? `Discover in ${featuredProfessional.city}` : "Ready to make it yours"}</span>
+            </span>
           </div>
         </section>
 
         {/* Service categories */}
-        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8" aria-label="Browse fashion service categories">
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8" aria-label="Browse fashion service categories">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Find your kind of style</p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">What are we creating today?</h2>
               <p className="mt-2 text-sm text-styler-muted">Browse services from approved fashion professionals.</p>
             </div>
-            <Link href="/services/lehenga_stitching" className="inline-flex items-center gap-1 text-sm font-semibold text-styler-accent hover:underline">
+            <Link href="/services" className="inline-flex items-center gap-1 text-sm font-semibold text-styler-accent hover:underline">
               Explore services <ArrowRight size={15} />
             </Link>
           </div>
 
-          <div className="mt-7 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {CATEGORIES.map(({ id, label, description, icon: Icon, image }) => {
-              const count = services.filter((service) => service.category === id).length;
+          <div className="mt-6 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6">
+            {CATEGORIES.map(({ id, label, icon: Icon, image }) => {
               return (
-                <Link key={id} href={`/services/${id}`} className="group overflow-hidden rounded-2xl border border-styler-line bg-styler-surface shadow-soft transition hover:-translate-y-1 hover:shadow-panel">
-                  <div className="relative h-28 overflow-hidden sm:h-32">
+                <Link key={id} href={`/services/${id}`} className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface transition hover:-translate-y-0.5 hover:border-styler-line-strong hover:shadow-soft">
+                  <div className="relative h-[4.5rem] overflow-hidden sm:h-24">
                     <img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                    <span className="absolute bottom-2 left-2 grid h-9 w-9 place-items-center rounded-xl bg-white/95 text-styler-accent"><Icon size={18} /></span>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
+                    <span className="absolute bottom-1.5 left-1.5 grid h-7 w-7 place-items-center rounded-md bg-white/95 text-styler-accent sm:bottom-2 sm:left-2 sm:h-8 sm:w-8"><Icon size={16} /></span>
                   </div>
-                  <div className="p-3">
-                    <h3 className="text-sm font-bold leading-snug">{label}</h3>
-                    <p className="mt-1 min-h-8 text-xs leading-4 text-styler-muted">{description}</p>
-                    <div className="mt-3 flex items-center justify-between text-xs font-semibold text-styler-accent">
-                      <span>{count ? `${count} service${count === 1 ? "" : "s"}` : "Explore"}</span>
-                      <ChevronRight size={15} />
+                  <div className="flex min-h-[4.25rem] items-center justify-between gap-1.5 px-2 py-2 sm:min-h-[4.5rem] sm:px-3">
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-2 text-[11px] font-bold leading-snug sm:text-sm">{label}</h3>
+                      <span className="mt-1 block text-[9px] font-medium text-styler-muted sm:text-[10px]">Explore services</span>
                     </div>
+                    <ChevronRight size={14} className="shrink-0 text-styler-accent transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </Link>
               );
@@ -276,7 +343,7 @@ export function SiteHome() {
 
        
         {/* Popular fashion services */}
-        <section className="bg-styler-surface-2/70 py-14 sm:py-16">
+        <section className="bg-styler-surface-2/70 py-10 sm:py-12">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -284,7 +351,7 @@ export function SiteHome() {
                 <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Popular fashion services</h2>
                 <p className="mt-2 text-sm text-styler-muted">Discover services and pricing from professionals.</p>
               </div>
-              <Link href="/services/lehenga_stitching" className="hidden items-center gap-1 text-sm font-semibold text-styler-accent sm:inline-flex">
+              <Link href="/services" className="hidden items-center gap-1 text-sm font-semibold text-styler-accent sm:inline-flex">
                 View all <ArrowRight size={15} />
               </Link>
             </div>
@@ -297,7 +364,7 @@ export function SiteHome() {
               </div>
             ) : services.length ? (
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {services.slice(0, 8).map((service, i) => {
+                {services.slice(0, 4).map((service, i) => {
                   const image =
                     service.images?.find((item) => item.url)?.url ||
                     SERVICE_FALLBACK_IMAGES[service.category || ""] ||
@@ -311,11 +378,11 @@ export function SiteHome() {
                     <Link
                       key={service._id || service.id || `${service.category}-${i}`}
                       href={href}
-                      className="group overflow-hidden rounded-2xl border border-styler-line bg-styler-surface shadow-soft transition hover:-translate-y-1 hover:shadow-panel"
+                      className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface shadow-soft transition hover:-translate-y-0.5 hover:shadow-panel"
                     >
                       <div className="relative h-44 overflow-hidden">
                         <img src={image} alt={service.title || "Fashion service"} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                        <span className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[10px] font-bold text-styler-accent">
+                        <span className="absolute left-3 top-3 rounded-md bg-white/95 px-2.5 py-1 text-[10px] font-bold text-styler-accent">
                           {categoryName(service.category)}
                         </span>
                       </div>
@@ -347,13 +414,13 @@ export function SiteHome() {
                 })}
               </div>
             ) : (
-              <div className="mt-6 rounded-2xl border border-dashed border-styler-line bg-styler-surface px-6 py-10 text-center">
+              <div className="mt-6 rounded-lg border border-dashed border-styler-line bg-styler-surface px-6 py-10 text-center">
                 <Scissors size={28} className="mx-auto text-styler-accent" />
                 <h3 className="mt-3 font-bold">New services coming soon</h3>
                 <p className="mt-2 text-sm text-styler-muted">
                   Explore professionals while new services are added.
                 </p>
-                <Link href="/professionals" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-styler-accent px-4 py-2.5 text-sm font-semibold text-white">
+                <Link href="/professionals" className="mt-4 inline-flex items-center gap-2 rounded-md bg-styler-accent px-4 py-2.5 text-sm font-semibold text-white">
                   Find a professional <ArrowRight size={15} />
                 </Link>
                 {apiError && <p className="mt-3 text-xs text-styler-muted">Some data could not be loaded.</p>}
@@ -363,7 +430,7 @@ export function SiteHome() {
         </section>
 
         {/* Featured professionals */}
-        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Meet the makers</p>
@@ -392,14 +459,14 @@ export function SiteHome() {
                   <Link
                     key={identifier || name}
                     href={identifier ? `/professionals/${identifier}` : "/professionals"}
-                    className="group overflow-hidden rounded-2xl border border-styler-line bg-styler-surface shadow-soft transition hover:-translate-y-1 hover:shadow-panel"
+                    className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface shadow-soft transition hover:-translate-y-0.5 hover:shadow-panel"
                   >
                     <div className="relative h-52 overflow-hidden bg-styler-surface-2">
                       <img src={image} alt={name} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                      <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                      <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
                         <BadgeCheck size={13} /> Approved
                       </span>
-                      <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-styler-accent">
+                      <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md bg-white/95 text-styler-accent">
                         <Heart size={15} />
                       </span>
                     </div>
@@ -425,13 +492,13 @@ export function SiteHome() {
               })}
             </div>
           ) : !loading ? (
-            <div className="mt-6 rounded-2xl border border-styler-line bg-styler-surface p-8 text-center text-sm text-styler-muted">
+            <div className="mt-6 rounded-lg border border-styler-line bg-styler-surface p-8 text-center text-sm text-styler-muted">
               Approved professionals will appear here as they join Styler.
             </div>
           ) : (
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-72 animate-pulse rounded-2xl bg-styler-surface" />
+                <div key={i} className="h-72 animate-pulse rounded-lg bg-styler-surface" />
               ))}
             </div>
           )}
@@ -439,7 +506,7 @@ export function SiteHome() {
 
         {/* Call to action */}
         <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-16 lg:px-8">
-          <div className="relative isolate overflow-hidden rounded-[28px] bg-[#35102f] px-6 py-10 text-white shadow-soft sm:px-10 sm:py-14 lg:px-14">
+          <div className="relative isolate overflow-hidden rounded-xl bg-[#35102f] px-6 py-10 text-white shadow-soft sm:px-10 sm:py-14 lg:px-14">
             <img
               src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1600&q=85"
               alt="Fashion styling inspiration"
@@ -456,7 +523,7 @@ export function SiteHome() {
               <p className="mt-3 text-sm leading-6 text-white/80">
                 From wedding lehengas to everyday alterations, find professionals who understand the details.
               </p>
-              <Link href="/professionals" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#45133f] transition hover:bg-pink-50">
+              <Link href="/professionals" className="mt-6 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-bold text-[#45133f] transition hover:bg-pink-50">
                 Find your professional <ArrowUpRight size={16} />
               </Link>
             </div>
@@ -464,7 +531,7 @@ export function SiteHome() {
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" className="bg-styler-surface-2/70 py-14 sm:py-16">
+        <section id="how-it-works" className="bg-styler-surface-2/70 py-10 sm:py-12">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Simple from the start</p>
@@ -481,9 +548,9 @@ export function SiteHome() {
                 { number: "03", icon: CalendarCheck, title: "Confirm your booking", text: "Confirm with the professional and pay securely." },
                 { number: "04", icon: CheckCircle2, title: "Enjoy your service", text: "Attend your appointment and share your feedback." },
               ].map(({ number, icon: Icon, title, text }) => (
-                <article key={number} className="rounded-2xl border border-styler-line bg-styler-surface p-5 shadow-soft">
+                <article key={number} className="rounded-lg border border-styler-line bg-styler-surface p-5 shadow-soft">
                   <div className="flex items-center justify-between">
-                    <span className="grid h-11 w-11 place-items-center rounded-2xl bg-styler-accent-soft text-styler-accent">
+                    <span className="grid h-11 w-11 place-items-center rounded-md bg-styler-accent-soft text-styler-accent">
                       <Icon size={21} />
                     </span>
                     <span className="font-mono text-sm font-bold text-styler-accent/60">{number}</span>
@@ -500,7 +567,7 @@ export function SiteHome() {
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {TRUST_ITEMS.map(({ icon: Icon, title, text }) => (
-              <div key={title} className="flex items-center gap-3 rounded-2xl border border-styler-line bg-styler-surface p-4">
+              <div key={title} className="flex items-center gap-3 rounded-lg border border-styler-line bg-styler-surface p-4">
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-styler-accent-soft text-styler-accent">
                   <Icon size={20} />
                 </span>

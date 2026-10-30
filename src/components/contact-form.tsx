@@ -27,8 +27,8 @@ export function ContactForm() {
         }),
       });
       setDone(result.emailDelivery === "sent"
-        ? "Thanks! Your message is in the Styler support inbox. Our team will get back to you."
-        : "Your message reached the Styler support inbox. Email forwarding is temporarily unavailable.");
+        ? "Thanks! Your message has been sent to Styler support. Our team will get back to you."
+        : "Your message has been received. Email forwarding is temporarily unavailable, but our team can still review it.");
       form.reset();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send your message. Please try again.");
@@ -38,14 +38,55 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4" noValidate={false}>
+    <form onSubmit={submit} className="space-y-5">
       {error && <Alert tone="error">{error}</Alert>}
       {done && <Alert tone="success">{done}</Alert>}
-      <Field label="Full Name" name="name" placeholder="Enter your name" required minLength={2} autoComplete="name" />
-      <Field label="Email Address" name="email" type="email" placeholder="Enter your email" required autoComplete="email" />
-      <Field label="Subject" name="subject" placeholder="How can we help?" />
-      <TextAreaField label="Message" name="message" placeholder="Type your message here..." required minLength={10} rows={5} />
-      <Button type="submit" loading={loading} className="w-full">Send Message</Button>
+      <Field
+        label="Full name"
+        name="name"
+        placeholder="Enter your name"
+        required
+        minLength={2}
+        maxLength={100}
+        autoComplete="name"
+        inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
+      />
+      <Field
+        label="Email address"
+        name="email"
+        type="email"
+        placeholder="you@example.com"
+        required
+        maxLength={254}
+        autoComplete="email"
+        inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
+      />
+      <Field
+        label="Subject"
+        name="subject"
+        placeholder="What can we help you with?"
+        minLength={3}
+        maxLength={150}
+        inputClassName="rounded-sm px-3 py-3 text-sm focus:ring-2 focus:ring-pink-500/20"
+      />
+      <TextAreaField
+        label="Message"
+        name="message"
+        placeholder="Share the details that will help us understand your question."
+        required
+        minLength={10}
+        maxLength={3000}
+        rows={5}
+        inputClassName="min-h-36 resize-y rounded-sm px-3 py-3 text-sm leading-6 focus:ring-2 focus:ring-pink-500/20"
+      />
+      <div className="flex flex-col gap-3 border-t border-styler-line pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-styler-muted">
+          Please don&apos;t include passwords or sensitive payment details.
+        </p>
+        <Button type="submit" loading={loading} className="w-full sm:w-auto">
+          Send message
+        </Button>
+      </div>
     </form>
   );
 }

@@ -35,6 +35,8 @@ test("reverse-geocode normalization supports localities and rejects incomplete a
 
   assert.deepEqual(address, {
     line1: "10 Main Road",
+    houseNumber: "10",
+    street: "Main Road",
     city: "Gurugram",
     state: "Haryana",
     postalCode: "122001",
@@ -42,9 +44,13 @@ test("reverse-geocode normalization supports localities and rejects incomplete a
     ...coordinates,
   });
   assert.equal(normalizeNominatimAddress({ address: { country: "India" } }, coordinates), null);
+  const withoutPostalCode = normalizeNominatimAddress({
+    address: { city: "Gurugram", state: "Haryana", country: "India" },
+  }, coordinates);
+  assert.equal(withoutPostalCode?.postalCode, "");
 });
 
-test("GPS requests still city-match professionals who have not set coordinates", () => {
+test("GPS requests only match professionals with a pin inside the requested radius", () => {
   const request = {
     searchRadiusKm: 10,
     addressSnapshot: {
@@ -59,7 +65,7 @@ test("GPS requests still city-match professionals who have not set coordinates",
     city: "Gurugram",
     state: "Haryana",
     baseLocation: {},
-  }, request), true);
+  }, request), false);
 
   assert.equal(servesWithinRadius({
     city: "Gurugram",
@@ -72,4 +78,12 @@ test("GPS requests still city-match professionals who have not set coordinates",
     state: "Delhi",
     baseLocation: {},
   }, request), false);
+
+  assert.equal(servesWithinRadius({
+    city: "Gurugram",
+    state: "Haryana",
+    baseLocation: {},
+  }, {
+    addressSnapshot: { city: "Gurugram", state: "Haryana", postalCode: "122001" },
+  }), true);
 });

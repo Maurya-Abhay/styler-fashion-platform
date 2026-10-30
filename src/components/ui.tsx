@@ -94,12 +94,14 @@ export function Field({
   label,
   help,
   error,
+  inputClassName = "",
   className = "",
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   label?: string;
   help?: string;
   error?: string;
+  inputClassName?: string;
   className?: string;
 }) {
   return (
@@ -108,7 +110,7 @@ export function Field({
       <input
         className={`w-full rounded border bg-white dark:bg-[#121620] px-3 py-2 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 transition-colors focus:border-pink-500 focus:outline-none ${
           error ? "border-rose-500" : "border-gray-200 dark:border-gray-800"
-        }`}
+        } ${inputClassName}`}
         {...props}
       />
       {help && <span className="text-[10px] text-gray-400">{help}</span>}
@@ -142,17 +144,19 @@ export function SelectField({
 
 export function TextAreaField({
   label,
+  inputClassName = "",
   className = "",
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label?: string;
+  inputClassName?: string;
   className?: string;
 }) {
   return (
     <label className={`flex flex-col gap-1 text-xs ${className}`}>
       {label && <span className="font-semibold text-gray-700 dark:text-gray-300">{label}</span>}
       <textarea
-        className="min-h-[90px] w-full rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#121620] px-3 py-2 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 transition-colors focus:border-pink-500 focus:outline-none"
+        className={`min-h-[90px] w-full rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#121620] px-3 py-2 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 transition-colors focus:border-pink-500 focus:outline-none ${inputClassName}`}
         {...props}
       />
     </label>

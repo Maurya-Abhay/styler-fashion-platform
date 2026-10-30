@@ -17,19 +17,33 @@ export async function createPayoutForCompletedBooking(bookingId: string) {
   const profile = await ProfessionalProfile.findById(booking.professionalId).select("userId payoutAccount").lean();
   if (!profile) throw new AppError("Professional profile not found.", 404, "PROFESSIONAL_NOT_FOUND");
   const amountPaise = Number(booking.priceSnapshot.professionalPayoutPaise);
-  const canPay = profile.payoutAccount?.status === "verified" && Boolean(profile.payoutAccount?.providerAccountId);
+  const accountProvider = profile.payoutAccount?.provider === "razorpay_route"
+    || (!profile.payoutAccount?.upiId && profile.payoutAccount?.providerAccountId)
+    ? "razorpay_route"
+    : "manual_upi";
+  const canPay = profile.payoutAccount?.status === "verified" && (
+    accountProvider === "manual_upi"
+      ? Boolean(profile.payoutAccount?.upiId && profile.payoutAccount?.accountHolderName)
+      : Boolean(profile.payoutAccount?.providerAccountId)
+  );
   const payout = await Payout.create({
     bookingId: booking._id,
     professionalId: booking.professionalId,
-    provider: "razorpay_route",
-    providerAccountId: profile.payoutAccount?.providerAccountId,
+    provider: accountProvider,
+    providerAccountId: accountProvider === "razorpay_route" ? profile.payoutAccount?.providerAccountId : undefined,
+    payoutRecipient: canPay ? {
+      provider: accountProvider,
+      accountHolderName: accountProvider === "manual_upi" ? profile.payoutAccount?.accountHolderName : undefined,
+      upiId: accountProvider === "manual_upi" ? profile.payoutAccount?.upiId : undefined,
+      providerAccountId: accountProvider === "razorpay_route" ? profile.payoutAccount?.providerAccountId : undefined,
+    } : undefined,
     grossAmountPaise: booking.priceSnapshot.servicePricePaise - booking.priceSnapshot.discountPaise,
     commissionPaise: booking.priceSnapshot.commissionPaise,
     amountPaise,
     currency: "INR",
-    status: canPay && amountPaise >= 100 ? "pending" : "on_hold",
+    status: canPay && amountPaise >= (accountProvider === "manual_upi" ? 1 : 100) ? "pending" : "on_hold",
     availableAt: new Date(),
-    failureReason: !canPay ? "Professional payout account is not verified." : amountPaise < 100 ? "Payout is below Razorpay Route minimum; manual handling is required." : undefined,
+    failureReason: !canPay ? "Professional payout account is not verified." : amountPaise < (accountProvider === "manual_upi" ? 1 : 100) ? "Payout amount is below the provider minimum." : undefined,
   }).catch(async (error: unknown) => {
     if ((error as { code?: number })?.code === 11000) {
       const found = await Payout.findOne({ bookingId: booking._id });
@@ -83,12 +97,24 @@ export async function reconcileCompletedBookingPayouts(limit = 100) {
   // Separately select only holds that can now be released. Ineligible holds are
   // excluded at the database so they do not starve eligible payouts in later runs.
   const eligibleHolds = await Payout.aggregate([
-    { $match: { status: "on_hold", amountPaise: { $gte: 100 } } },
+    { $match: { status: "on_hold", amountPaise: { $gte: 1 } } },
     { $lookup: { from: "professional_profiles", localField: "professionalId", foreignField: "_id", as: "professional" } },
     { $unwind: "$professional" },
     { $match: {
       "professional.payoutAccount.status": "verified",
-      "professional.payoutAccount.providerAccountId": { $exists: true, $ne: "" },
+      $or: [
+        {
+          provider: "manual_upi",
+          "professional.payoutAccount.upiId": { $exists: true, $ne: "" },
+          "professional.payoutAccount.accountHolderName": { $exists: true, $ne: "" },
+          amountPaise: { $gte: 1 },
+        },
+        {
+          provider: "razorpay_route",
+          "professional.payoutAccount.providerAccountId": { $exists: true, $ne: "" },
+          amountPaise: { $gte: 100 },
+        },
+      ],
     } },
     { $sort: { createdAt: 1 } },
     { $limit: safeLimit },
@@ -97,17 +123,26 @@ export async function reconcileCompletedBookingPayouts(limit = 100) {
       bookingId: 1,
       professionalId: 1,
       providerAccountId: "$professional.payoutAccount.providerAccountId",
+      provider: "$provider",
+      payoutAccount: "$professional.payoutAccount",
       professionalUserId: "$professional.userId",
     } },
   ]);
   for (const held of eligibleHolds) {
     try {
       const resumed = await Payout.findOneAndUpdate(
-        { _id: held._id, status: "on_hold", amountPaise: { $gte: 100 } },
+        { _id: held._id, status: "on_hold", amountPaise: { $gte: held.provider === "manual_upi" ? 1 : 100 } },
         {
           $set: {
             status: "pending",
-            providerAccountId: held.providerAccountId,
+            providerAccountId: held.provider === "razorpay_route" ? held.providerAccountId : undefined,
+            payoutRecipient: held.provider === "manual_upi"
+              ? {
+                  provider: "manual_upi",
+                  accountHolderName: held.payoutAccount.accountHolderName,
+                  upiId: held.payoutAccount.upiId,
+                }
+              : { provider: "razorpay_route", providerAccountId: held.providerAccountId },
             availableAt: new Date(),
           },
           $unset: { failureReason: 1 },
@@ -121,7 +156,7 @@ export async function reconcileCompletedBookingPayouts(limit = 100) {
           recipientUserId: String(held.professionalUserId),
           type: "payout_status",
           title: "Payout ready for processing",
-          message: "Your payout account is verified. Your eligible Styler payout is now ready for processing.",
+          message: "Your payout details are verified. Your eligible Styler payout is now ready for processing.",
           channels: ["in_app", "email"],
           data: { payoutId: String(resumed._id), bookingId: String(held.bookingId) },
           dedupeKey: `payout-ready:${String(resumed._id)}`,
@@ -139,11 +174,314 @@ export async function reconcileCompletedBookingPayouts(limit = 100) {
   return { completedBookingsScanned: bookings.length, eligibleHoldsScanned: eligibleHolds.length, createdOrReconciled, failed };
 }
 
+export async function releaseVerifiedPayoutHolds(profileId: string, payoutId?: string) {
+  const profile = await ProfessionalProfile.findById(profileId).select("userId payoutAccount").lean();
+  if (!profile || profile.payoutAccount?.status !== "verified") return 0;
+  const provider = profile.payoutAccount.provider === "razorpay_route"
+    || (!profile.payoutAccount.upiId && profile.payoutAccount.providerAccountId)
+    ? "razorpay_route"
+    : "manual_upi";
+  const isManualUpi = provider === "manual_upi"
+    && Boolean(profile.payoutAccount.upiId && profile.payoutAccount.accountHolderName);
+  const isRoute = provider === "razorpay_route" && Boolean(profile.payoutAccount.providerAccountId);
+  if (!isManualUpi && !isRoute) return 0;
+  const minAmount = isManualUpi ? 1 : 100;
+  const legacyUnsentRoutePayout = isManualUpi
+    ? {
+        provider: { $in: ["razorpay_route", null] },
+        providerTransferId: { $in: [null, ""] },
+        manualTransactionReference: { $in: [null, ""] },
+      }
+    : { provider: "razorpay_route" };
+  const heldPayouts = await Payout.find({
+    professionalId: profile._id,
+    ...(payoutId ? { _id: payoutId } : {}),
+    status: "on_hold",
+    amountPaise: { $gte: minAmount },
+    ...(isManualUpi
+      ? {
+          $or: [
+            {
+              provider: "manual_upi",
+              providerTransferId: { $in: [null, ""] },
+              manualTransactionReference: { $in: [null, ""] },
+            },
+            legacyUnsentRoutePayout,
+          ],
+        }
+      : { provider }),
+  }).select("_id bookingId").limit(250).lean();
+  let released = 0;
+  for (const held of heldPayouts) {
+    const switchingLegacyRoute = isManualUpi && held.provider !== "manual_upi";
+    const updated = await Payout.findOneAndUpdate(
+      {
+        _id: held._id,
+        status: "on_hold",
+        provider: held.provider === "manual_upi"
+          ? "manual_upi"
+          : { $in: ["razorpay_route", null] },
+        amountPaise: { $gte: minAmount },
+        ...(isManualUpi
+          ? {
+              providerTransferId: { $in: [null, ""] },
+              manualTransactionReference: { $in: [null, ""] },
+            }
+          : {}),
+      },
+      {
+        $set: {
+          status: "pending",
+          availableAt: new Date(),
+          ...(isManualUpi ? { provider: "manual_upi" } : {}),
+          payoutRecipient: isManualUpi
+            ? {
+                provider: "manual_upi",
+                accountHolderName: profile.payoutAccount.accountHolderName,
+                upiId: profile.payoutAccount.upiId,
+              }
+            : {
+                provider: "razorpay_route",
+                providerAccountId: profile.payoutAccount.providerAccountId,
+              },
+          ...(isRoute ? { providerAccountId: profile.payoutAccount.providerAccountId } : {}),
+        },
+        $unset: {
+          failureReason: 1,
+          ...(switchingLegacyRoute ? { providerAccountId: 1 } : {}),
+        },
+      },
+      { new: true },
+    );
+    if (!updated) continue;
+    released++;
+    await notifyUser({
+      recipientUserId: String(profile.userId),
+      type: "payout_status",
+      title: "Payout ready for processing",
+      message: "Your payout details are verified. Your eligible Styler payout is now ready for processing.",
+      channels: ["in_app", "email"],
+      data: { payoutId: String(updated._id), bookingId: String(held.bookingId) },
+      dedupeKey: `payout-ready:${String(updated._id)}`,
+    }).catch((error) => console.error("Unable to send payout-ready notification", error));
+  }
+  return released;
+}
+
+export async function prepareManualUpiPayout(payoutId: string, adminUserId: string) {
+  let payout = await Payout.findById(payoutId);
+  if (!payout) throw new AppError("Payout not found.", 404, "PAYOUT_NOT_FOUND");
+  if (
+    payout.status === "on_hold" &&
+    (payout.provider === "razorpay_route" || !payout.provider) &&
+    !payout.providerTransferId &&
+    !payout.manualTransactionReference
+  ) {
+    const profile = await ProfessionalProfile.findById(payout.professionalId)
+      .select("payoutAccount")
+      .lean();
+    if (
+      profile?.payoutAccount?.provider === "manual_upi" &&
+      profile.payoutAccount.status === "verified" &&
+      profile.payoutAccount.upiId &&
+      profile.payoutAccount.accountHolderName
+    ) {
+      await releaseVerifiedPayoutHolds(String(payout.professionalId), payoutId);
+      payout = await Payout.findById(payoutId);
+      if (!payout) throw new AppError("Payout not found.", 404, "PAYOUT_NOT_FOUND");
+    }
+  }
+  if (payout.provider !== "manual_upi") throw new AppError("This payout is not configured for manual UPI.", 409, "PAYOUT_PROVIDER_MISMATCH");
+  if (payout.providerTransferId || payout.manualTransactionReference) {
+    throw new AppError("This payout already has a transfer reference and cannot be prepared again.", 409, "PAYOUT_ALREADY_TRANSFERRED");
+  }
+  if (payout.status === "processing" && payout.manualPreparedAt) return payout;
+  if (!["pending", "on_hold", "failed"].includes(payout.status)) {
+    throw new AppError("Payout is not ready to be prepared.", 409, "PAYOUT_NOT_READY");
+  }
+  if (payout.amountPaise < 1) throw new AppError("Payout amount must be greater than zero.", 409, "INVALID_PAYOUT_AMOUNT");
+  const booking = await Booking.findOne({ _id: payout.bookingId, status: "completed" }).lean();
+  if (!booking) throw new AppError("Only completed bookings can be paid out.", 409, "BOOKING_NOT_COMPLETED");
+  const profile = await ProfessionalProfile.findById(payout.professionalId).select("userId payoutAccount").lean();
+  if (
+    !profile ||
+    profile.payoutAccount?.provider !== "manual_upi" ||
+    profile.payoutAccount.status !== "verified" ||
+    !profile.payoutAccount.upiId ||
+    !profile.payoutAccount.accountHolderName
+  ) {
+    throw new AppError("The professional's UPI payee details are not verified.", 409, "PAYOUT_ACCOUNT_NOT_READY");
+  }
+  const payment = await Payment.findOne({ bookingId: payout.bookingId, status: "captured" }).lean();
+  if (!payment?.razorpayPaymentId) {
+    throw new AppError("A captured customer payment is required before preparing this payout.", 409, "CAPTURED_PAYMENT_REQUIRED");
+  }
+  const providerPayment = await fetchRazorpayPayment(payment.razorpayPaymentId);
+  if (providerPayment.status !== "captured" && providerPayment.captured !== true) {
+    throw new AppError("Razorpay has not confirmed that the customer payment is captured.", 409, "PAYMENT_NOT_CAPTURED");
+  }
+
+  const nextAttempt = payout.attempts.length + 1;
+  const claimed = await Payout.findOneAndUpdate(
+    { _id: payout._id, provider: "manual_upi", status: { $in: ["pending", "on_hold", "failed"] } },
+    {
+      $set: {
+        status: "processing",
+        payoutRecipient: {
+          provider: "manual_upi",
+          accountHolderName: profile.payoutAccount.accountHolderName,
+          upiId: profile.payoutAccount.upiId,
+        },
+        manualPreparedBy: adminUserId,
+        manualPreparedAt: new Date(),
+      },
+      $unset: { failureReason: 1 },
+      $push: { attempts: { attemptNumber: nextAttempt, attemptedAt: new Date(), status: "processing" } },
+    },
+    { new: true },
+  );
+  if (!claimed) throw new AppError("Payout was claimed by another administrator.", 409, "PAYOUT_ALREADY_CLAIMED");
+
+  const paymentGuard = await Payment.findOneAndUpdate(
+    { _id: payment._id, status: "captured" },
+    { $inc: { payoutProcessingVersion: 1 } },
+    { new: true },
+  );
+  if (!paymentGuard) {
+    await Payout.updateOne(
+      { _id: payout._id, status: "processing", manualPreparedBy: adminUserId },
+      {
+        $set: { status: payout.status },
+        $unset: { manualPreparedBy: 1, manualPreparedAt: 1, payoutRecipient: 1 },
+        $pull: { attempts: { attemptNumber: nextAttempt } },
+      },
+    );
+    throw new AppError("The customer payment is being refunded or is no longer captured; do not send this payout.", 409, "PAYMENT_NOT_CAPTURED");
+  }
+  return claimed;
+}
+
+export async function cancelManualUpiPayoutPreparation(payoutId: string) {
+  const payout = await Payout.findOne({
+    _id: payoutId,
+    provider: "manual_upi",
+    status: "processing",
+    manualPreparedAt: { $ne: null },
+    manualTransactionReference: { $in: [null, ""] },
+  });
+  if (!payout) throw new AppError("No cancellable manual UPI payout preparation was found.", 409, "PAYOUT_NOT_PREPARED");
+  const payment = await Payment.findOne({ bookingId: payout.bookingId }).lean();
+  const pendingProviderRefund = payment?.refunds?.some(
+    (refund: any) => refund.status === "pending" && Boolean(refund.razorpayRefundId),
+  );
+  if (pendingProviderRefund) {
+    throw new AppError("A customer refund is already with Razorpay; payout preparation cannot be cancelled yet.", 409, "REFUND_PROCESSING");
+  }
+  const lastAttempt = payout.attempts[payout.attempts.length - 1];
+  const cancelled = await Payout.findOneAndUpdate(
+    {
+      _id: payout._id,
+      status: "processing",
+      manualPreparedAt: payout.manualPreparedAt,
+      manualTransactionReference: { $in: [null, ""] },
+    },
+    {
+      $set: { status: "pending" },
+      $unset: { manualPreparedAt: 1, manualPreparedBy: 1, failureReason: 1 },
+      $pull: { attempts: { attemptNumber: lastAttempt?.attemptNumber } },
+    },
+    { new: true },
+  );
+  if (!cancelled) throw new AppError("Payout preparation changed; refresh and try again.", 409, "PAYOUT_STATE_CHANGED");
+  return cancelled;
+}
+
+export async function recordManualUpiPayout(payoutId: string, adminUserId: string, transactionReference: string) {
+  const normalizedReference = transactionReference.trim();
+  if (normalizedReference.length < 3 || normalizedReference.length > 200) {
+    throw new AppError("Enter a transaction reference between 3 and 200 characters.", 400, "INVALID_PAYOUT_REFERENCE");
+  }
+  const payout = await Payout.findById(payoutId);
+  if (!payout) throw new AppError("Payout not found.", 404, "PAYOUT_NOT_FOUND");
+  if (payout.status === "transferred" && payout.manualTransactionReference === normalizedReference) {
+    const payment = await Payment.findOne({ bookingId: payout.bookingId }).select("_id").lean();
+    if (payment) await writePayoutLedger(payout, payment._id);
+    return payout;
+  }
+  if (
+    payout.provider !== "manual_upi" ||
+    payout.status !== "processing" ||
+    !payout.manualPreparedAt ||
+    !payout.payoutRecipient?.upiId
+  ) {
+    throw new AppError("Prepare this payout before recording an external UPI transfer.", 409, "PAYOUT_NOT_PREPARED");
+  }
+  const payment = await Payment.findOne({ bookingId: payout.bookingId });
+  if (!payment) throw new AppError("Payment record not found for this payout.", 404, "PAYMENT_NOT_FOUND");
+  const duplicateReference = await Payout.exists({
+    manualTransactionReference: normalizedReference,
+    _id: { $ne: payout._id },
+  });
+  if (duplicateReference) {
+    throw new AppError("This UPI transaction reference is already recorded for another payout.", 409, "DUPLICATE_PAYOUT_REFERENCE");
+  }
+
+  let updated;
+  try {
+    updated = await Payout.findOneAndUpdate(
+      { _id: payout._id, provider: "manual_upi", status: "processing", manualPreparedAt: payout.manualPreparedAt },
+      {
+        $set: {
+          status: "transferred",
+          manualTransactionReference: normalizedReference,
+          manualPaidBy: adminUserId,
+          manualPaidAt: new Date(),
+          transferredAt: new Date(),
+          "attempts.$[attempt].transactionReference": normalizedReference,
+          "attempts.$[attempt].status": "transferred",
+        },
+        $unset: { failureReason: 1 },
+      },
+      {
+        new: true,
+        arrayFilters: [{ "attempt.attemptNumber": payout.attempts[payout.attempts.length - 1]?.attemptNumber }],
+      },
+    );
+  } catch (error) {
+    if ((error as { code?: number })?.code === 11000) {
+      throw new AppError("This UPI transaction reference is already recorded for another payout.", 409, "DUPLICATE_PAYOUT_REFERENCE");
+    }
+    throw error;
+  }
+  if (!updated) throw new AppError("Payout state changed; refresh before recording the transfer.", 409, "PAYOUT_STATE_CHANGED");
+  await writePayoutLedger(updated, payment._id);
+  const profile = await ProfessionalProfile.findById(payout.professionalId).select("userId").lean();
+  if (profile) {
+    await notifyUser({
+      recipientUserId: String(profile.userId),
+      type: "payout_status",
+      title: "Payout marked as transferred",
+      message: "Styler has recorded your UPI payout. Check your bank or UPI app for the transfer; your payout receipt is available in Earnings.",
+      channels: ["in_app", "email"],
+      data: {
+        payoutId: String(updated._id),
+        bookingId: String(updated.bookingId),
+        receiptPath: `/api/receipts/payout/${String(updated._id)}`,
+      },
+      dedupeKey: `payout-transferred:${String(updated._id)}`,
+    }).catch((error) => console.error("Unable to send manual payout notification", error));
+  } else {
+    console.error("Manual payout was recorded but its professional profile could not be found", { payoutId: String(updated._id) });
+  }
+  return updated;
+}
+
 export async function processRazorpayRoutePayout(payoutId: string, options: { onHoldUntil?: Date } = {}) {
   const payout = await Payout.findById(payoutId);
   if (!payout) throw new AppError("Payout not found.", 404, "PAYOUT_NOT_FOUND");
   if (payout.status === "transferred") return payout;
   if (!["pending", "on_hold", "failed"].includes(payout.status)) throw new AppError("Payout is already being processed or is not payable.", 409, "PAYOUT_NOT_READY");
+  if (payout.provider !== "razorpay_route") throw new AppError("This payout must be processed as a manual UPI payout.", 409, "PAYOUT_PROVIDER_MISMATCH");
   if (payout.amountPaise < 100) throw new AppError("Payout below ₹1.00 needs manual handling.", 409, "PAYOUT_BELOW_PROVIDER_MINIMUM");
   const profile = await ProfessionalProfile.findById(payout.professionalId).select("userId payoutAccount").lean();
   if (!profile || profile.payoutAccount?.status !== "verified" || !profile.payoutAccount.providerAccountId) {
@@ -209,7 +547,7 @@ export async function processRazorpayRoutePayout(payoutId: string, options: { on
 
     if (mapped === "transferred") {
       await writePayoutLedger(updated, payment._id);
-      await notifyUser({ recipientUserId: String(profile.userId), type: "payout_status", title: "Payout transferred", message: "Razorpay has processed the transfer for your completed booking. Settlement timing depends on the provider.", channels: ["in_app", "email"], data: { payoutId: String(updated._id), bookingId: String(updated.bookingId) }, dedupeKey: `payout-transferred:${String(updated._id)}` });
+      await notifyUser({ recipientUserId: String(profile.userId), type: "payout_status", title: "Payout transferred", message: "Razorpay has processed the transfer for your completed booking. Settlement timing depends on the provider; your payout receipt is available in Earnings.", channels: ["in_app", "email"], data: { payoutId: String(updated._id), bookingId: String(updated.bookingId), receiptPath: `/api/receipts/payout/${String(updated._id)}` }, dedupeKey: `payout-transferred:${String(updated._id)}` });
     } else if (mapped === "reversed") {
       await writePayoutReversalLedger(updated, payment._id);
     }
@@ -244,7 +582,7 @@ async function writePayoutLedger(payout: any, paymentId: unknown) {
     await session.withTransaction(async () => {
       await FinancialLedger.create([
         { transactionGroupId: group, accountCode: "professional_payable", entrySide: "debit", entryType: "professional_payout", amountPaise: amount, bookingId: payout.bookingId, paymentId, payoutId: payout._id, idempotencyKey: `${group}:payable-debit`, description: "Professional payout paid from payable balance." },
-        { transactionGroupId: group, accountCode: "cash_clearing", entrySide: "credit", entryType: "professional_payout", amountPaise: amount, bookingId: payout.bookingId, paymentId, payoutId: payout._id, idempotencyKey: `${group}:cash-credit`, description: "Funds transferred to professional via Razorpay Route." },
+        { transactionGroupId: group, accountCode: "cash_clearing", entrySide: "credit", entryType: "professional_payout", amountPaise: amount, bookingId: payout.bookingId, paymentId, payoutId: payout._id, externalReference: payout.manualTransactionReference || payout.providerTransferId, idempotencyKey: `${group}:cash-credit`, description: payout.provider === "manual_upi" ? "Funds transferred to professional via manually recorded UPI payment." : "Funds transferred to professional via Razorpay Route." },
       ], { session, ordered: true });
     });
   } finally { await session.endSession(); }
@@ -256,6 +594,20 @@ export async function refundBookingPayment(input: {
   const booking = await Booking.findById(input.bookingId).lean();
   if (!booking) throw new AppError("Booking not found.", 404, "BOOKING_NOT_FOUND");
   const initialPayout = await Payout.findOne({ bookingId: booking._id });
+  if (initialPayout?.provider === "manual_upi" && initialPayout.status === "transferred") {
+    throw new AppError(
+      "This professional was already paid outside Styler. An administrator must reconcile recovery of that payout before a customer refund can be issued.",
+      409,
+      "MANUAL_PAYOUT_REFUND_REQUIRES_REVIEW",
+    );
+  }
+  if (initialPayout?.status === "processing") {
+    throw new AppError(
+      "A professional payout is being prepared or processed. Retry the refund after its payout status is reconciled.",
+      409,
+      "PAYOUT_PROCESSING_REQUIRES_REVIEW",
+    );
+  }
   const REFUNDABLE_STATUSES = ["captured", "partially_refunded", "refund_pending"];
   // "refunded" is included in the lookup so that a retry with the SAME idempotency key (lost response,
   // double click) gets the original result instead of a confusing "not refundable" error.

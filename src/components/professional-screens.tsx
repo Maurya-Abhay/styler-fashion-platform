@@ -7,6 +7,8 @@ import {
   Activity,
   ArrowRight,
   BadgeCheck,
+  Bell,
+  Camera,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -14,53 +16,37 @@ import {
   FileCheck2,
   FileUp,
   ImagePlus,
+  KeyRound,
   LocateFixed,
+  Mail,
   MapPin,
+  Monitor,
+  Moon,
   Pencil,
   Plus,
+  ReceiptText,
   RefreshCw,
   Save,
   Scissors,
   ShieldCheck,
   Sparkles,
   Star,
+  Sun,
   Trash2,
   UploadCloud,
   UserCheck,
+  UserRound,
   WalletCards,
   X,
 } from "lucide-react";
 import { apiRequest, dateTime, humanize, money, unwrapItems } from "@/components/api-client";
+import { uploadImageKit } from "@/components/imagekit-upload";
+import { ProfessionalLocationEditor } from "@/components/professional-location-editor";
 import { Alert, LoadingBlock } from "@/components/ui";
-import { getCurrentCoordinates, reverseGeocode } from "@/lib/location";
+import { useTheme, type Theme } from "@/components/theme-provider";
 import { CATEGORIES } from "@/lib/categories";
 
 const categories = CATEGORIES.map((category) => category.slug);
-
-async function uploadImageKit(file: File, purpose: "profile" | "portfolio" | "private_document") {
-  const auth = await apiRequest<any>("/api/imagekit/auth", {
-    method: "POST",
-    body: JSON.stringify({ purpose, mimeType: file.type, sizeBytes: file.size }),
-  });
-  const form = new FormData();
-  form.append("file", file);
-  form.append("fileName", file.name);
-  form.append("publicKey", auth.publicKey);
-  form.append("signature", auth.signature);
-  form.append("token", auth.token);
-  form.append("expire", String(auth.expire));
-  form.append("useUniqueFileName", "true");
-  form.append("folder", purpose === "private_document" ? "/styler/private-documents" : "/styler/portfolio");
-  if (purpose === "private_document") form.append("isPrivateFile", "true");
-
-  const response = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
-    method: "POST",
-    body: form,
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.message || "Image upload failed.");
-  return data;
-}
 
 function StatusPill({ status }: { status: string }) {
   let tone = "bg-styler-surface-2 text-styler-ink-soft ";
@@ -93,6 +79,7 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
     city: "",
     state: "",
     postalCode: "",
+    baseLocation: null,
     profilePhoto: null,
     portfolioImages: [],
     documents: [],
@@ -141,7 +128,7 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
     setNotice("");
     try {
       const payload: any = {
-        displayName: profile.displayName,
+        displayName: profile.displayName || undefined,
         bio: profile.bio,
         experienceYears: Number(profile.experienceYears || 0),
         categories: profile.categories,
@@ -151,6 +138,9 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
         serviceAreas: profile.serviceAreas || [],
         submit,
       };
+      if (Number.isFinite(profile.baseLocation?.latitude) && Number.isFinite(profile.baseLocation?.longitude)) {
+        payload.baseLocation = profile.baseLocation;
+      }
       if (profile.profilePhoto?.url) payload.profilePhoto = profile.profilePhoto;
       if (profile.portfolioImages?.length) payload.portfolioImages = profile.portfolioImages;
 
@@ -328,25 +318,12 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
                 className="w-full rounded-xl border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none"
               />
             </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-styler-ink-soft mb-1">City</label>
-              <input
-                type="text"
-                value={profile.city || ""}
-                onChange={(e) => update("city", e.target.value)}
-                className="w-full rounded-xl border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-styler-ink-soft mb-1">State</label>
-              <input
-                type="text"
-                value={profile.state || ""}
-                onChange={(e) => update("state", e.target.value)}
-                className="w-full rounded-xl border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none"
-              />
-            </div>
           </div>
+
+          <ProfessionalLocationEditor
+            value={profile}
+            onChange={(patch) => setProfile((current: any) => ({ ...current, ...patch }))}
+          />
 
           <div>
             <label className="block text-[11px] font-semibold text-styler-ink-soft mb-1">Professional Introduction</label>
@@ -1128,7 +1105,7 @@ export function ProfessionalRequests() {
   const [acceptedBookingId, setAcceptedBookingId] = useState("");
   const [busy, setBusy] = useState("");
   const refreshing = useRef(false);
-  const seenOfferIds = useRef(new Set<string>());
+  const router = useRouter();
 
   async function load(pageNumber = page, showLoading = true) {
     if (refreshing.current) return;
@@ -1139,11 +1116,6 @@ export function ProfessionalRequests() {
       const d = await apiRequest<any>(`/api/professional/requests?limit=100&page=${pageNumber}`);
       setReadiness(d?.readiness || null);
       const nextItems = unwrapItems(d);
-      const newOffers = nextItems.filter((offer) => !seenOfferIds.current.has(String(offer._id)));
-      for (const offer of nextItems) seenOfferIds.current.add(String(offer._id));
-      if (newOffers.length) {
-        setSelectedOfferId((current) => current || String(newOffers[0]._id));
-      }
       const pages = Math.max(1, Number(d?.totalPages) || 1);
       setTotalPages(pages);
       if (pageNumber > pages) {
@@ -1164,7 +1136,7 @@ export function ProfessionalRequests() {
     const refresh = () => {
       if (!document.hidden) void load(page, false);
     };
-    const timer = window.setInterval(refresh, 15_000);
+    const timer = window.setInterval(refresh, 5_000);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       window.clearInterval(timer);
@@ -1206,6 +1178,9 @@ export function ProfessionalRequests() {
       setNotice(action === "accept" ? "Offer accepted." : "Offer declined.");
       setAcceptedBookingId(action === "accept" ? String(result?._id || "") : "");
       setSelectedOfferId("");
+      if (action === "accept" && result?._id) {
+        router.push(`/professional/bookings/${result._id}#booking-chat`);
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not process offer.");
@@ -1221,7 +1196,7 @@ export function ProfessionalRequests() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-bold text-styler-ink ">Booking Requests</h2>
-          <p className="text-[10px] text-styler-muted">Incoming requests update automatically every 15 seconds.</p>
+          <p className="text-[10px] text-styler-muted">New offers appear automatically here and as an alert across your workspace.</p>
         </div>
         <button type="button" onClick={() => void load()} className="p-1.5 rounded border border-styler-line text-styler-ink-soft ">
           <RefreshCw size={14} />
@@ -1248,7 +1223,7 @@ export function ProfessionalRequests() {
               {!readiness.activeServiceCount && <li>Add and activate at least one service listing.</li>}
               {!readiness.hasAvailabilitySchedule && <li>Set your weekly availability schedule.</li>}
               {!readiness.hasCityAndState && <li>Complete your service city and state in your profile.</li>}
-              {readiness.hasCityAndState && !readiness.hasServiceLocation && <li>For distance-based matching, set your service location in your profile. Without coordinates, requests can still match by city/state.</li>}
+              {readiness.hasCityAndState && !readiness.hasServiceLocation && <li>Set your studio pin to receive customer requests that include an exact GPS location.</li>}
             </ul>
             <div className="flex flex-wrap gap-3 pt-1">
               <Link className="text-xs font-semibold underline" href="/professional/profile">Check service location</Link>
@@ -1286,6 +1261,7 @@ export function ProfessionalRequests() {
               <div className="flex flex-wrap items-center gap-4 text-[10px] text-styler-muted border-t border-styler-line pt-2">
                 <span className="flex items-center gap-1"><MapPin size={11} />{o.request?.city || "Location not provided"}</span>
                 <span>Within {o.request?.searchRadiusKm ?? 25} km</span>
+                {o.request?.distanceKm != null && <span>About {o.request.distanceKm} km away</span>}
                 {o.request?.preferredStartAt && <span>{dateTime(o.request.preferredStartAt)}</span>}
                 {o.request?.budgetMaxPaise != null && <span>Budget up to {money(o.request.budgetMaxPaise)}</span>}
                 <span className="flex items-center gap-1"><Clock3 size={11} />Expires {dateTime(o.expiresAt)}</span>
@@ -1352,6 +1328,7 @@ export function ProfessionalRequests() {
             <dl className="mt-5 grid grid-cols-1 gap-3 rounded-xl bg-styler-canvas p-4 text-xs sm:grid-cols-2">
               <div><dt className="text-styler-muted">Service</dt><dd className="mt-1 font-semibold text-styler-ink">{selectedOffer.service?.title || humanize(selectedOffer.request?.serviceCategory || "")}</dd></div>
               <div><dt className="text-styler-muted">Customer area</dt><dd className="mt-1 font-semibold text-styler-ink">{[selectedOffer.request?.city, selectedOffer.request?.state, selectedOffer.request?.postalCode].filter(Boolean).join(", ") || "Not provided"}</dd></div>
+              <div><dt className="text-styler-muted">Approx. distance</dt><dd className="mt-1 font-semibold text-styler-ink">{selectedOffer.request?.distanceKm == null ? "Not available" : `About ${selectedOffer.request.distanceKm} km`}</dd></div>
               <div><dt className="text-styler-muted">Preferred appointment</dt><dd className="mt-1 font-semibold text-styler-ink">{dateTime(selectedOffer.request?.preferredStartAt)} – {dateTime(selectedOffer.request?.preferredEndAt)}</dd></div>
               <div><dt className="text-styler-muted">Duration</dt><dd className="mt-1 font-semibold text-styler-ink">{selectedOffer.request?.requestedDurationMinutes || 60} minutes</dd></div>
               <div><dt className="text-styler-muted">Your offer</dt><dd className="mt-1 font-semibold text-styler-ink">{selectedOffer.service?.pricingType === "quote_required" ? "Quote required on acceptance" : money(selectedOffer.quotedPricePaise)}</dd></div>
@@ -1409,7 +1386,8 @@ export function ProfessionalEarnings() {
   const [totalPages, setTotalPages] = useState(1);
   const [payoutAccount, setPayoutAccount] = useState<any>(null);
   const [applicationStatus, setApplicationStatus] = useState("");
-  const [providerAccountId, setProviderAccountId] = useState("");
+  const [accountHolderName, setAccountHolderName] = useState("");
+  const [upiId, setUpiId] = useState("");
   const [accountLoading, setAccountLoading] = useState(true);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountError, setAccountError] = useState("");
@@ -1443,7 +1421,8 @@ export function ProfessionalEarnings() {
         if (!active) return;
         setPayoutAccount(result.payoutAccount);
         setApplicationStatus(result.applicationStatus || "");
-        setProviderAccountId(result.payoutAccount?.providerAccountId || "");
+        setAccountHolderName(result.payoutAccount?.accountHolderName || "");
+        setUpiId(result.payoutAccount?.upiId || "");
       })
       .catch((cause) => {
         if (active) setAccountError(cause instanceof Error ? cause.message : "Could not load payout account.");
@@ -1464,7 +1443,10 @@ export function ProfessionalEarnings() {
     try {
       const result = await apiRequest<any>("/api/professional/payout-account", {
         method: "PATCH",
-        body: JSON.stringify({ providerAccountId: providerAccountId.trim() }),
+        body: JSON.stringify({
+          accountHolderName: accountHolderName.trim(),
+          upiId: upiId.trim(),
+        }),
       });
       setPayoutAccount(result.payoutAccount);
       setAccountNotice(result.message || "Payout account submitted for verification.");
@@ -1482,7 +1464,9 @@ export function ProfessionalEarnings() {
     <div className="space-y-4">
       <div>
         <h2 className="text-sm font-bold text-styler-ink ">Earnings & Transfers</h2>
-        <p className="text-[10px] text-styler-muted">Overview of income, platform commission, and payouts.</p>
+        <p className="text-[10px] text-styler-muted">
+          Customers pay Styler through Razorpay. After a booking is completed, Styler admins transfer your share to your verified UPI ID and record the transaction reference here.
+        </p>
       </div>
 
       {error && <Alert tone="error">{error}</Alert>}
@@ -1493,9 +1477,9 @@ export function ProfessionalEarnings() {
         <>
           <section className="space-y-3 rounded border border-styler-line bg-styler-surface p-4">
             <div>
-              <h3 className="text-xs font-bold text-styler-ink">Razorpay Route payout account</h3>
+              <h3 className="text-xs font-bold text-styler-ink">UPI payout details</h3>
               <p className="mt-1 text-[10px] text-styler-muted">
-                Submit your linked-account ID. An administrator must verify it before payouts can be processed.
+                Add your UPI ID and the account holder name. Styler reviews the details; entering a UPI ID does not itself verify ownership. Payouts are sent manually by Styler after service completion.
               </p>
             </div>
             {accountError && <Alert tone="error">{accountError}</Alert>}
@@ -1504,35 +1488,49 @@ export function ProfessionalEarnings() {
               <p className="text-[11px] text-styler-muted">Loading payout account status...</p>
             ) : applicationStatus !== "approved" ? (
               <p className="text-[11px] text-styler-muted">Payout setup is available after your professional application is approved.</p>
-            ) : payoutAccount?.status === "verified" ? (
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-styler-ink-soft">
-                <StatusPill status="verified" />
-                <span>Account ending in {String(payoutAccount.providerAccountId || "").slice(-4)}</span>
-              </div>
             ) : (
-              <form onSubmit={submitPayoutAccount} className="flex flex-col gap-2 sm:flex-row">
-                <label className="sr-only" htmlFor="razorpay-account-id">Razorpay Route linked-account ID</label>
-                <input
-                  id="razorpay-account-id"
-                  value={providerAccountId}
-                  onChange={(event) => setProviderAccountId(event.target.value)}
-                  placeholder="Razorpay Route linked-account ID"
-                  minLength={3}
-                  maxLength={200}
-                  required
-                  className="min-w-0 flex-1 rounded border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none focus:border-styler-accent"
-                />
-                <button
-                  type="submit"
-                  disabled={accountBusy}
-                  className="inline-flex items-center justify-center rounded bg-styler-accent px-4 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60"
-                >
-                  {accountBusy ? "Submitting..." : "Submit for verification"}
-                </button>
-                {payoutAccount?.status === "pending" && (
-                  <span className="self-center text-[10px] text-styler-muted">Awaiting admin verification</span>
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-styler-ink-soft">
+                  <StatusPill status={payoutAccount?.status || "not_started"} />
+                  {payoutAccount?.verifiedAt && <span>Verified {dateTime(payoutAccount.verifiedAt)}</span>}
+                </div>
+                {payoutAccount?.reviewReason && (
+                  <p className="text-[11px] text-rose-600">{payoutAccount.reviewReason}</p>
                 )}
-              </form>
+                <form onSubmit={submitPayoutAccount} className="grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1 text-[10px] font-medium text-styler-muted">
+                    Account holder name
+                    <input
+                      value={accountHolderName}
+                      onChange={(event) => setAccountHolderName(event.target.value)}
+                      placeholder="Name on the UPI account"
+                      minLength={2}
+                      maxLength={120}
+                      required
+                      className="block w-full rounded border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none focus:border-styler-accent"
+                    />
+                  </label>
+                  <label className="space-y-1 text-[10px] font-medium text-styler-muted">
+                    UPI ID
+                    <input
+                      value={upiId}
+                      onChange={(event) => setUpiId(event.target.value)}
+                      placeholder="name@bank"
+                      minLength={4}
+                      maxLength={256}
+                      required
+                      className="block w-full rounded border border-styler-line bg-styler-surface-2 px-3 py-2 text-xs text-styler-ink outline-none focus:border-styler-accent"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={accountBusy}
+                    className="inline-flex items-center justify-center rounded bg-styler-accent px-4 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60 sm:col-span-2"
+                  >
+                    {accountBusy ? "Submitting..." : payoutAccount?.status === "verified" ? "Update UPI details" : "Submit for verification"}
+                  </button>
+                </form>
+              </>
             )}
           </section>
 
@@ -1565,7 +1563,9 @@ export function ProfessionalEarnings() {
                       <th className="pb-2">Booking ID</th>
                       <th className="pb-2">Gross</th>
                       <th className="pb-2">Your Share</th>
+                      <th className="pb-2">Transfer Reference</th>
                       <th className="pb-2 text-right">Status</th>
+                      <th className="pb-2 text-right">Receipt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-styler-line ">
@@ -1574,7 +1574,35 @@ export function ProfessionalEarnings() {
                         <td className="py-2.5 font-bold text-styler-ink ">{String(p.bookingId || "").slice(-8) || "—"}</td>
                         <td className="py-2.5 text-styler-muted">{money(p.grossAmountPaise)}</td>
                         <td className="py-2.5 font-bold text-emerald-600 dark:text-emerald-400">{money(p.amountPaise)}</td>
-                        <td className="py-2.5 text-right"><StatusPill status={p.status} /></td>
+                        <td className="py-2.5 font-mono text-[10px] text-styler-muted">{p.manualTransactionReference || p.providerTransferId || "—"}</td>
+                        <td className="py-2.5 text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            <StatusPill status={p.status} />
+                            <span className="max-w-56 text-[9px] text-styler-muted">
+                              {p.status === "pending"
+                                ? "Ready for Styler admin to transfer via UPI."
+                                : p.status === "on_hold"
+                                  ? p.failureReason || "Waiting for payout details to be verified."
+                                  : p.status === "processing" && p.manualPreparedAt
+                                    ? "Admin is preparing the UPI transfer."
+                                    : p.status === "transferred"
+                                      ? "Transfer recorded by Styler."
+                                      : p.failureReason || ""}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-right">
+                          {p.status === "transferred" && (
+                            <a
+                              href={`/api/receipts/payout/${p._id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded bg-styler-accent px-2.5 py-1 text-[10px] font-semibold text-white hover:opacity-90"
+                            >
+                              <ReceiptText size={12} /> Receipt
+                            </a>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1606,27 +1634,38 @@ export function ProfessionalEarnings() {
 export function ProfessionalSettings() {
   const [profile, setProfile] = useState<any>(null);
   const [availability, setAvailability] = useState<any>(null);
+  const [account, setAccount] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [password, setPassword] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     Promise.all([
       apiRequest<any>("/api/professional/application"),
       apiRequest<any>("/api/professional/availability"),
+      apiRequest<any>("/api/account/profile"),
     ])
-      .then(([p, a]) => {
+      .then(([p, a, user]) => {
         setProfile(p);
         setAvailability(a);
+        setAccount(user);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
+  function updateAccount(key: string, value: any) {
+    setAccount((current: any) => ({ ...current, [key]: value }));
+  }
+
   async function toggle(value: boolean) {
-    setBusy(true);
+    setBusy("availability");
     setError("");
+    setNotice("");
     try {
       const updated = await apiRequest<any>("/api/professional/accepting-requests", {
         method: "PATCH",
@@ -1641,7 +1680,91 @@ export function ProfessionalSettings() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update setting.");
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  }
+
+  async function saveAccount(event: FormEvent) {
+    event.preventDefault();
+    setBusy("account");
+    setError("");
+    setNotice("");
+    try {
+      const updated = await apiRequest<any>("/api/account/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: account.name,
+          phone: account.phone || "",
+          profileImageUrl: account.profileImageUrl || "",
+        }),
+      });
+      setAccount(updated);
+      setNotice("Account details saved.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save your account details.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadAccountPhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    setNotice("");
+    try {
+      const uploaded = await uploadImageKit(file, "profile");
+      updateAccount("profileImageUrl", uploaded.url);
+      setNotice("Photo uploaded. Save account details to apply it.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not upload your photo.");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  }
+
+  async function saveNotifications(key: "email" | "webPush", value: boolean) {
+    const notificationPreferences = { ...account.notificationPreferences, [key]: value };
+    setAccount((current: any) => ({ ...current, notificationPreferences }));
+    setBusy("notifications");
+    setError("");
+    setNotice("");
+    try {
+      const updated = await apiRequest<any>("/api/account/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ notificationPreferences }),
+      });
+      setAccount(updated);
+      setNotice("Notification preferences saved.");
+    } catch (cause) {
+      setAccount((current: any) => ({
+        ...current,
+        notificationPreferences: { ...current.notificationPreferences, [key]: !value },
+      }));
+      setError(cause instanceof Error ? cause.message : "Could not save notification preferences.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function changePassword(event: FormEvent) {
+    event.preventDefault();
+    setBusy("password");
+    setError("");
+    setNotice("");
+    try {
+      const result = await apiRequest<any>("/api/account/change-password", {
+        method: "POST",
+        body: JSON.stringify(password),
+      });
+      setPassword({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setNotice(result?.message || "Password changed successfully.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not change your password.");
+    } finally {
+      setBusy("");
     }
   }
 
@@ -1649,38 +1772,212 @@ export function ProfessionalSettings() {
   if (!profile) return <Alert tone="error">{error || "Your professional profile could not be loaded."}</Alert>;
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <div>
-        <h2 className="text-sm font-bold text-styler-ink ">Studio Settings</h2>
-        <p className="text-[10px] text-styler-muted">Account status and availability preferences.</p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-5">
+      <header className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-styler-accent">Professional workspace</p>
+            <h1 className="mt-1 font-serif text-2xl font-bold text-styler-ink">Settings</h1>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-styler-muted">
+              Manage your account, notifications, appearance, security and booking availability in one place.
+            </p>
+          </div>
+          <Link href="/professional/profile" className="inline-flex items-center gap-1.5 self-start rounded border border-styler-line px-3 py-2 text-xs font-semibold text-styler-ink transition hover:bg-styler-surface-2 sm:self-auto">
+            View studio profile <ArrowRight size={13} />
+          </Link>
+        </div>
+      </header>
 
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
-      <div className="rounded border border-styler-line bg-styler-surface p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <form onSubmit={saveAccount} className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-styler-accent-soft text-styler-accent"><UserRound size={17} /></span>
           <div>
-            <p className="text-xs font-bold text-styler-ink ">{profile?.displayName || "Name not set"}</p>
-            <p className="text-[10px] text-styler-muted">{[profile?.city, profile?.state].filter(Boolean).join(", ") || "Location not set"}</p>
+            <h2 className="text-sm font-bold text-styler-ink">Account details</h2>
+            <p className="mt-0.5 text-[11px] leading-5 text-styler-muted">These details are for signing in and contacting you. Your public studio name is managed on your profile.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold text-styler-ink">
+              Full name
+              <input value={account?.name || ""} onChange={(event) => updateAccount("name", event.target.value)} required minLength={2} maxLength={100} className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" />
+            </label>
+            <label className="block text-xs font-semibold text-styler-ink">
+              Mobile number
+              <input type="tel" value={account?.phone || ""} onChange={(event) => updateAccount("phone", event.target.value)} maxLength={20} autoComplete="tel" className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" />
+            </label>
+            <label className="block text-xs font-semibold text-styler-ink sm:col-span-2">
+              Email address
+              <input value={account?.email || ""} readOnly className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface-2 px-3 py-2.5 text-sm font-normal text-styler-muted" />
+              <span className="mt-1 block text-[10px] font-normal text-styler-muted">Email changes require verification and aren’t available here.</span>
+            </label>
+          </div>
+          <div className="flex flex-col items-center justify-center rounded border border-styler-line bg-styler-surface-2 p-4">
+            <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-full border border-styler-line bg-styler-surface text-styler-accent">
+              {account?.profileImageUrl ? <img src={account.profileImageUrl} alt="Account profile" className="h-full w-full object-cover" /> : <UserRound size={30} />}
+            </div>
+            <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded border border-styler-line bg-styler-surface px-3 py-2 text-[11px] font-semibold text-styler-ink hover:bg-styler-surface-2">
+              <Camera size={13} /> {uploading ? "Uploading..." : "Change photo"}
+              <input type="file" accept="image/*" className="sr-only" onChange={uploadAccountPhoto} disabled={uploading} />
+            </label>
+            <span className="mt-1 text-center text-[9px] text-styler-muted">ImageKit upload · Save to apply</span>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end border-t border-styler-line pt-4">
+          <button type="submit" disabled={busy !== "" || uploading} className="inline-flex items-center gap-1.5 rounded bg-styler-accent px-4 py-2.5 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60">
+            <Save size={13} /> {busy === "account" ? "Saving..." : "Save account details"}
+          </button>
+        </div>
+      </form>
+
+      <section className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"><Bell size={17} /></span>
+          <div>
+            <h2 className="text-sm font-bold text-styler-ink">Notifications</h2>
+            <p className="mt-0.5 text-[11px] leading-5 text-styler-muted">Choose where you want to receive booking and account updates.</p>
+          </div>
+        </div>
+        <div className="mt-4 divide-y divide-styler-line">
+          {[
+            { key: "email" as const, label: "Email updates", description: `Important updates sent to ${account?.email || "your email address"}.`, icon: Mail },
+            { key: "webPush" as const, label: "Browser notifications", description: "Updates delivered to this browser when notifications are enabled.", icon: Bell },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <label key={item.key} className="flex cursor-pointer items-center justify-between gap-4 py-3.5">
+                <span className="flex items-start gap-3">
+                  <Icon size={15} className="mt-0.5 text-styler-muted" />
+                  <span><strong className="block text-xs text-styler-ink">{item.label}</strong><span className="mt-0.5 block text-[10px] text-styler-muted">{item.description}</span></span>
+                </span>
+                <input type="checkbox" checked={account?.notificationPreferences?.[item.key] !== false} disabled={busy !== ""} onChange={(event) => void saveNotifications(item.key, event.target.checked)} className="h-4 w-4 rounded border-styler-line text-styler-accent focus:ring-styler-accent" />
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400"><Monitor size={17} /></span>
+          <div>
+            <h2 className="text-sm font-bold text-styler-ink">Appearance</h2>
+            <p className="mt-0.5 text-[11px] leading-5 text-styler-muted">Choose how Styler looks on this device. System follows your device preference.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {[
+            { value: "light" as Theme, label: "Light", icon: Sun },
+            { value: "dark" as Theme, label: "Dark", icon: Moon },
+            { value: "system" as Theme, label: "System", icon: Monitor },
+          ].map((option) => {
+            const Icon = option.icon;
+            const selected = theme === option.value;
+            return (
+              <button key={option.value} type="button" onClick={() => setTheme(option.value)} aria-pressed={selected} className={`flex items-center gap-2 rounded border px-3 py-3 text-xs font-semibold transition ${selected ? "border-styler-accent bg-styler-accent-soft text-styler-accent" : "border-styler-line text-styler-ink hover:bg-styler-surface-2"}`}>
+                <Icon size={15} /> {option.label}
+                {selected && <Check size={13} className="ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <form onSubmit={changePassword} className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"><KeyRound size={17} /></span>
+          <div>
+            <h2 className="text-sm font-bold text-styler-ink">Password & security</h2>
+            <p className="mt-0.5 text-[11px] leading-5 text-styler-muted">Use a unique password with at least 8 characters. Other active sessions will be signed out after the change.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="block text-xs font-semibold text-styler-ink">Current password<input type="password" autoComplete="current-password" value={password.currentPassword} onChange={(event) => setPassword((current) => ({ ...current, currentPassword: event.target.value }))} required minLength={1} maxLength={128} className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" /></label>
+          <label className="block text-xs font-semibold text-styler-ink">New password<input type="password" autoComplete="new-password" value={password.newPassword} onChange={(event) => setPassword((current) => ({ ...current, newPassword: event.target.value }))} required minLength={8} maxLength={128} className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" /></label>
+          <label className="block text-xs font-semibold text-styler-ink">Confirm new password<input type="password" autoComplete="new-password" value={password.confirmPassword} onChange={(event) => setPassword((current) => ({ ...current, confirmPassword: event.target.value }))} required minLength={8} maxLength={128} className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" /></label>
+        </div>
+        <div className="mt-4 flex justify-end border-t border-styler-line pt-4">
+          <button type="submit" disabled={busy !== ""} className="inline-flex items-center gap-1.5 rounded border border-styler-line px-4 py-2.5 text-xs font-semibold text-styler-ink hover:bg-styler-surface-2 disabled:opacity-60">
+            <ShieldCheck size={13} /> {busy === "password" ? "Updating..." : "Change password"}
+          </button>
+        </div>
+      </form>
+
+      <section className="rounded border border-styler-line bg-styler-surface p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-styler-ink">Booking availability</h2>
+            <p className="mt-1 text-[11px] leading-5 text-styler-muted">New customer requests are routed only after approval and while your studio is accepting bookings.</p>
           </div>
           <StatusPill status={profile?.applicationStatus || "draft"} />
         </div>
-
-        <div className="pt-3 border-t border-styler-line flex items-center justify-between">
+        <div className="mt-4 flex items-center justify-between gap-4 rounded border border-styler-line bg-styler-surface-2 p-3">
           <div>
-            <p className="text-xs font-bold text-styler-ink ">Accept Booking Requests</p>
-            <p className="text-[10px] text-styler-muted">Toggle whether customer requests can reach your studio.</p>
+            <p className="text-xs font-bold text-styler-ink">Accept booking requests</p>
+            <p className="mt-0.5 text-[10px] text-styler-muted">Pause this at any time without changing your studio profile.</p>
           </div>
-          <input
-            type="checkbox"
-            checked={Boolean(availability?.acceptingRequests)}
-            onChange={(e) => toggle(e.target.checked)}
-            disabled={busy || profile?.applicationStatus !== "approved"}
-            className="rounded text-styler-accent focus:ring-styler-accent"
-          />
+          <input type="checkbox" role="switch" checked={Boolean(availability?.acceptingRequests)} onChange={(event) => void toggle(event.target.checked)} disabled={busy !== "" || profile?.applicationStatus !== "approved"} aria-label="Accept booking requests" className="h-4 w-4 rounded border-styler-line text-styler-accent focus:ring-styler-accent disabled:opacity-50" />
         </div>
-      </div>
+        {profile?.applicationStatus !== "approved" && <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">Request acceptance is available after your profile is approved.</p>}
+        <p className="mt-3 text-[10px] leading-5 text-styler-muted">
+          Requests with a customer pin require your service-location pin to fall inside the customer’s search radius.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {[
+            {
+              label: "Verification",
+              ready: profile?.applicationStatus === "approved",
+              href: "/professional/profile",
+              action: "View profile",
+            },
+            {
+              label: "Service location",
+              ready: Number.isFinite(profile?.baseLocation?.latitude) && Number.isFinite(profile?.baseLocation?.longitude),
+              href: "/professional/profile",
+              action: "Manage location",
+            },
+            {
+              label: "Weekly availability",
+              ready: Boolean(availability?.weeklySchedule?.length),
+              href: "/professional/availability",
+              action: "Set hours",
+            },
+          ].map((item) => (
+            <div key={item.label} className="rounded-lg border border-styler-line bg-styler-surface-2 p-3">
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold text-styler-ink">
+                <span className={`h-1.5 w-1.5 rounded-full ${item.ready ? "bg-emerald-500" : "bg-amber-500"}`} />
+                {item.label}
+              </p>
+              <Link href={item.href} className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-styler-accent hover:underline">
+                {item.action} <ArrowRight size={11} />
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded border border-styler-line bg-styler-surface p-5">
+        <h2 className="text-sm font-bold text-styler-ink">Workspace shortcuts</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {[
+          { label: "Manage profile and service pin", href: "/professional/profile" },
+          { label: "Manage services and pricing", href: "/professional/services" },
+          { label: "Manage availability", href: "/professional/availability" },
+        ].map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="flex items-center justify-between rounded border border-styler-line bg-styler-surface px-3 py-3 text-[10px] font-semibold text-styler-ink transition hover:border-styler-line-strong"
+          >
+            {item.label} <ArrowRight size={13} className="text-styler-accent" />
+          </Link>
+        ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -1692,6 +1989,12 @@ export function ProfessionalSettings() {
 export function ProfessionalProfile() {
   const [profile, setProfile] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ displayName: "", bio: "", profilePhoto: null as { url: string; fileId?: string } | null });
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
   const [ratingSummary, setRatingSummary] = useState<any>(null);
   const [ratingError, setRatingError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1733,16 +2036,24 @@ export function ProfessionalProfile() {
     };
   }, []);
 
-  async function setServiceLocation() {
+  async function saveServiceLocation() {
     setLocationBusy(true);
     setLocationError("");
     setLocationMessage("");
     try {
-      const coordinates = await getCurrentCoordinates();
-      const address = await reverseGeocode(coordinates);
+      const baseLocation = profile?.baseLocation;
+      if (!Number.isFinite(baseLocation?.latitude) || !Number.isFinite(baseLocation?.longitude)) {
+        throw new Error("Choose your studio location on the map or use current location first.");
+      }
       const result = await apiRequest<any>("/api/professional/location", {
         method: "PATCH",
-        body: JSON.stringify(address),
+        body: JSON.stringify({
+          latitude: baseLocation.latitude,
+          longitude: baseLocation.longitude,
+          city: profile?.city || "",
+          state: profile?.state || "",
+          postalCode: profile?.postalCode || "",
+        }),
       });
       setProfile((current: any) => ({ ...current, ...result }));
       setLocationMessage("Service location saved. Nearby booking requests can now match your studio.");
@@ -1750,6 +2061,59 @@ export function ProfessionalProfile() {
       setLocationError(cause instanceof Error ? cause.message : "Could not save your service location.");
     } finally {
       setLocationBusy(false);
+    }
+  }
+
+  function startEditingProfile() {
+    setProfileDraft({
+      displayName: profile?.displayName || user?.name || "",
+      bio: profile?.bio || "",
+      profilePhoto: profile?.profilePhoto?.url ? profile.profilePhoto : null,
+    });
+    setProfileError("");
+    setProfileMessage("");
+    setEditingProfile(true);
+  }
+
+  async function uploadStudioPhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    setProfileError("");
+    setProfileMessage("");
+    try {
+      const uploaded = await uploadImageKit(file, "profile");
+      setProfileDraft((current) => ({ ...current, profilePhoto: { url: uploaded.url, fileId: uploaded.fileId } }));
+      setProfileMessage("Photo uploaded. Save your profile to publish it.");
+    } catch (cause) {
+      setProfileError(cause instanceof Error ? cause.message : "Could not upload your profile photo.");
+    } finally {
+      setUploadingPhoto(false);
+      event.target.value = "";
+    }
+  }
+
+  async function savePublicProfile(event: FormEvent) {
+    event.preventDefault();
+    setSavingProfile(true);
+    setProfileError("");
+    setProfileMessage("");
+    try {
+      const result = await apiRequest<any>("/api/professional/public-profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          displayName: profileDraft.displayName,
+          bio: profileDraft.bio,
+          ...(profileDraft.profilePhoto ? { profilePhoto: profileDraft.profilePhoto } : {}),
+        }),
+      });
+      setProfile((current: any) => ({ ...current, ...result }));
+      setEditingProfile(false);
+      setProfileMessage("Studio profile saved and updated for customers.");
+    } catch (cause) {
+      setProfileError(cause instanceof Error ? cause.message : "Could not save your studio profile.");
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -1763,7 +2127,8 @@ export function ProfessionalProfile() {
   const documents = profile?.documents || [];
   const averageRating = ratingSummary?.averageRating == null ? "—" : Number(ratingSummary.averageRating).toFixed(1);
   const reviewCount = ratingSummary?.totalReviews ?? 0;
-  const canEditProfile = !["approved", "pending_review", "suspended"].includes(profile?.applicationStatus);
+  const canEditPublicProfile = !["pending_review", "suspended"].includes(profile?.applicationStatus);
+  const canContinueApplication = ["draft", "needs_changes", "rejected"].includes(profile?.applicationStatus);
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -1773,57 +2138,100 @@ export function ProfessionalProfile() {
           <h1 className="text-xl font-bold font-serif text-styler-ink mt-0.5">Professional Profile</h1>
           <p className="text-xs text-styler-muted ">How your studio profile appears to customers on Styler.</p>
         </div>
-        {canEditProfile ? (
-          <Link
-            href="/professional/onboarding"
-            className="inline-flex items-center gap-1.5 rounded bg-styler-accent px-3.5 py-2 text-xs font-semibold text-white hover:bg-styler-accent transition self-start sm:self-auto shadow-2xs"
-          >
-            <Sparkles size={14} /> Edit Profile
-          </Link>
-        ) : (
-          <span className="rounded border border-styler-line px-3.5 py-2 text-[10px] font-semibold text-styler-muted ">
-            Profile {humanize(profile?.applicationStatus).toLowerCase()}
-          </span>
-        )}
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <button type="button" onClick={startEditingProfile} disabled={!canEditPublicProfile} className="inline-flex items-center gap-1.5 rounded bg-styler-accent px-3.5 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:cursor-not-allowed disabled:opacity-50">
+            <Pencil size={13} /> Edit studio profile
+          </button>
+          {canContinueApplication && <Link href="/professional/onboarding" className="inline-flex items-center gap-1.5 rounded border border-styler-line px-3.5 py-2 text-xs font-semibold text-styler-ink hover:bg-styler-surface-2"><Sparkles size={13} /> Continue setup</Link>}
+        </div>
       </div>
 
       {error && <Alert tone="error">{error}</Alert>}
       {ratingError && <Alert tone="warning">{ratingError}</Alert>}
       {locationError && <Alert tone="error">{locationError}</Alert>}
       {locationMessage && <Alert tone="success">{locationMessage}</Alert>}
+      {profileError && <Alert tone="error">{profileError}</Alert>}
+      {profileMessage && <Alert tone="success">{profileMessage}</Alert>}
 
-      <div className="flex flex-col gap-3 rounded border border-styler-line bg-styler-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold text-styler-ink">
-            {profile?.baseLocation?.latitude != null && profile?.baseLocation?.longitude != null
-              ? "Service location is set for radius-based matching."
-              : "Set your exact service location to receive nearby booking requests."}
-          </p>
-          <p className="mt-1 text-[10px] text-styler-muted">
-            Your location is requested only after you click. OpenStreetMap receives coordinates to identify your address; customers see your city, not your exact pin.
-          </p>
-          <a
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1 inline-block text-[10px] text-styler-muted underline underline-offset-2"
-          >
-            © OpenStreetMap contributors
-          </a>
+      {profile?.applicationStatus === "pending_review" && <Alert tone="warning">Your application is being reviewed. Studio profile edits will be available after the review is complete.</Alert>}
+
+      {editingProfile && (
+        <form onSubmit={savePublicProfile} className="rounded border border-styler-line bg-styler-surface p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-styler-ink">Edit public studio profile</h2>
+              <p className="mt-1 text-[11px] leading-5 text-styler-muted">Update what customers see. Your verification documents and service details are not changed here.</p>
+            </div>
+            <button type="button" onClick={() => setEditingProfile(false)} aria-label="Close profile editor" className="rounded p-1.5 text-styler-muted hover:bg-styler-surface-2"><X size={16} /></button>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_200px]">
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-styler-ink">Studio display name
+                <input value={profileDraft.displayName} onChange={(event) => setProfileDraft((draft) => ({ ...draft, displayName: event.target.value }))} required minLength={2} maxLength={120} className="mt-1.5 w-full rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" />
+              </label>
+              <label className="block text-xs font-semibold text-styler-ink">About your studio
+                <textarea value={profileDraft.bio} onChange={(event) => setProfileDraft((draft) => ({ ...draft, bio: event.target.value }))} rows={5} maxLength={3000} className="mt-1.5 w-full resize-y rounded border border-styler-line bg-styler-surface px-3 py-2.5 text-sm font-normal text-styler-ink outline-none focus:border-styler-accent" />
+                <span className="mt-1 block text-right text-[10px] font-normal text-styler-muted">{profileDraft.bio.length}/3000</span>
+              </label>
+            </div>
+            <div className="flex flex-col items-center justify-center rounded border border-styler-line bg-styler-surface-2 p-4">
+              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-styler-line bg-styler-surface text-styler-accent">
+                {profileDraft.profilePhoto?.url ? <img src={profileDraft.profilePhoto.url} alt="Studio profile preview" className="h-full w-full object-cover" /> : <UserRound size={32} />}
+              </div>
+              <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded border border-styler-line bg-styler-surface px-3 py-2 text-[11px] font-semibold text-styler-ink hover:bg-styler-surface-2">
+                <Camera size={13} /> {uploadingPhoto ? "Uploading..." : "Change photo"}
+                <input type="file" accept="image/*" className="sr-only" onChange={uploadStudioPhoto} disabled={uploadingPhoto} />
+              </label>
+              <span className="mt-1 text-center text-[9px] text-styler-muted">Uploaded securely with ImageKit</span>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2 border-t border-styler-line pt-4">
+            <button type="button" onClick={() => setEditingProfile(false)} className="rounded border border-styler-line px-3.5 py-2 text-xs font-semibold text-styler-ink hover:bg-styler-surface-2">Cancel</button>
+            <button type="submit" disabled={savingProfile || uploadingPhoto} className="inline-flex items-center gap-1.5 rounded bg-styler-accent px-4 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60">
+              <Save size={13} /> {savingProfile ? "Saving..." : "Save profile"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="space-y-3 rounded border border-styler-line bg-styler-surface p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-styler-ink">
+              {profile?.baseLocation?.latitude != null && profile?.baseLocation?.longitude != null
+                ? "Service location is set for radius-based matching."
+                : "Set your service location to receive nearby booking requests."}
+            </p>
+            <p className="mt-1 text-[10px] text-styler-muted">
+              Customers see your city, not your exact pin. Exact coordinates are used privately to route requests within the customer's search radius.
+            </p>
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block text-[10px] text-styler-muted underline underline-offset-2"
+            >
+              © OpenStreetMap contributors
+            </a>
+          </div>
+          {profile?.applicationStatus === "suspended" && (
+            <span className="text-xs text-styler-muted">Contact Styler support to update a suspended account.</span>
+          )}
         </div>
-        {profile?.applicationStatus === "suspended" ? (
-          <span className="text-xs text-styler-muted">Contact Styler support to update a suspended account.</span>
-        ) : (
-          <button
-            type="button"
-            onClick={setServiceLocation}
-            disabled={locationBusy}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded bg-styler-accent px-3 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60"
-          >
-            <LocateFixed size={14} />
-            {locationBusy ? "Saving location..." : "Use current location"}
-          </button>
-        )}
+        <ProfessionalLocationEditor
+          value={profile || {}}
+          disabled={profile?.applicationStatus === "suspended"}
+          onChange={(patch) => setProfile((current: any) => ({ ...current, ...patch }))}
+        />
+        <button
+          type="button"
+          onClick={saveServiceLocation}
+          disabled={locationBusy || profile?.applicationStatus === "suspended"}
+          className="inline-flex items-center justify-center gap-2 rounded bg-styler-accent px-3 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:opacity-60"
+        >
+          <LocateFixed size={14} />
+          {locationBusy ? "Saving location..." : "Save service location"}
+        </button>
       </div>
 
       {/* Main Profile Summary Card */}

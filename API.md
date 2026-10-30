@@ -49,6 +49,9 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | POST | `/api/auth/resend-otp` | Public | Request another email-verification code; rate-limited. |
 | POST | `/api/auth/forgot-password` | Public | Start a password-reset flow without exposing whether an account exists. |
 | POST | `/api/auth/reset-password` | Public | Reset a password using a valid reset code. |
+| GET | `/api/account/profile` | Customer / Professional | Read the signed-in user's safe account details and notification preferences. |
+| PATCH | `/api/account/profile` | Customer / Professional | Update safe account details and email/browser notification preferences. |
+| POST | `/api/account/change-password` | Customer / Professional | Change the current user's password after verifying the existing password; other sessions are revoked. |
 
 ## Customer requests, bookings, and payments
 
@@ -76,8 +79,9 @@ These endpoints require the configured cron authorization secret. Both GET and P
 
 | Method | Route | Access | Purpose |
 |---|---|---|---|
-| GET | `/api/customer/profile` | Customer | Read the customer's safe profile and saved-account settings. |
-| PATCH | `/api/customer/profile` | Customer | Update permitted customer profile fields. |
+| GET | `/api/customer/dashboard` | Customer | Load customer-scoped booking, request, notification, payment summary, and six-month payment trend. |
+| GET | `/api/customer/profile` | Authenticated | Read the signed-in user's safe profile and saved-account settings. |
+| PATCH | `/api/customer/profile` | Customer / Professional | Update permitted customer or professional account fields. |
 | GET | `/api/customer/addresses` | Customer | List saved customer addresses. |
 | POST | `/api/customer/addresses` | Customer | Add a saved address. |
 | PATCH | `/api/customer/addresses/[addressId]` | Customer | Update an address owned by the customer. |
@@ -90,8 +94,10 @@ These endpoints require the configured cron authorization secret. Both GET and P
 
 | Method | Route | Access | Purpose |
 |---|---|---|---|
+| GET | `/api/professional/dashboard` | Professional | Load the professional's profile, offers, bookings, payouts, reviews, services, availability, and weekly payout trend. |
 | GET | `/api/professional/application` | Professional | Read the professional application/profile state. |
-| PATCH | `/api/professional/application` | Professional | Update onboarding/profile data and submit application changes. |
+| PATCH | `/api/professional/application` | Professional | Update onboarding/profile data, persist a GPS/map service pin, and submit an application (requires a pin for admin review). |
+| PATCH | `/api/professional/public-profile` | Professional | Update the public studio name, description, and profile photo without changing verification data. |
 | GET | `/api/professional/services` | Professional | List the professional's services. |
 | POST | `/api/professional/services` | Professional | Create a service listing, including fixed, starting-from, or quote-required pricing. |
 | PATCH | `/api/professional/services/[serviceId]` | Professional | Update a service owned by the professional. |
@@ -99,13 +105,13 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | GET | `/api/professional/availability` | Professional | Read weekly schedule, exceptions, and request-acceptance settings. |
 | PUT | `/api/professional/availability` | Professional | Replace availability schedule and request-acceptance settings. |
 | PATCH | `/api/professional/accepting-requests` | Professional | Toggle whether the professional is accepting new requests. |
-| PATCH | `/api/professional/location` | Professional | Update the professional's service-area location and coordinates. |
-| GET | `/api/professional/requests` | Professional | List active matching offers/request details without customer street address. |
+| PATCH | `/api/professional/location` | Professional | Update the professional's service-area location and coordinates; city/state/PIN can be supplied from reverse geocoding or corrected manually. |
+| GET | `/api/professional/requests` | Professional | List active matching offers, approximate GPS distance, and request details without the customer's exact pin or street address. |
 | GET | `/api/professional/bookings` | Professional | List bookings assigned to the professional. |
 | GET | `/api/professional/bookings/[bookingId]` | Professional / Owner-scoped | Read details for a booking assigned to the professional. |
 | GET | `/api/professional/earnings` | Professional | Read earnings, commissions, and payout summary. |
-| GET | `/api/professional/payout-account` | Professional | Read payout-account onboarding state. |
-| PATCH | `/api/professional/payout-account` | Professional | Submit or update payout-account onboarding details. |
+| GET | `/api/professional/payout-account` | Professional | Read the current professional's UPI payout setup and verification status. |
+| PATCH | `/api/professional/payout-account` | Professional | Submit/update an account-holder name and UPI ID for admin review; changed details require re-verification. |
 | GET | `/api/professional/reviews` | Professional | List reviews for the professional. |
 
 ## Notifications and uploads
@@ -114,6 +120,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 |---|---|---|---|
 | GET | `/api/notifications` | Authenticated | List the current user's notifications; supports pagination and `unreadOnly=true`. |
 | PATCH | `/api/notifications/[notificationId]/read` | Authenticated / Owner-scoped | Mark the current user's notification as read. |
+| PATCH | `/api/notifications/read-all` | Authenticated | Mark all unread notifications belonging to the current user as read. |
 | GET | `/api/notifications/push-subscriptions` | Authenticated | Return the configured Web Push public key. |
 | POST | `/api/notifications/push-subscriptions` | Authenticated | Save/update a Web Push subscription for the current user. |
 | DELETE | `/api/notifications/push-subscriptions` | Authenticated | Deactivate the current user's Web Push subscription endpoint. |
@@ -123,7 +130,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 
 | Method | Route | Access | Purpose |
 |---|---|---|---|
-| GET | `/api/admin/dashboard` | Admin | Load dashboard counts and period-based financial metrics. |
+| GET | `/api/admin/dashboard` | Admin | Load platform counts, period-based payment/revenue and booking trends, payout exposure, booking statuses, and recent bookings. |
 | GET | `/api/admin/applications` | Admin | List professional applications for review. |
 | GET | `/api/admin/applications/[id]` | Admin | Read application details and review materials. |
 | POST | `/api/admin/applications/[id]/approve` | Admin | Approve a professional application. |
@@ -140,9 +147,10 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | GET | `/api/admin/bookings` | Admin | List platform bookings. |
 | GET | `/api/admin/payments` | Admin | List and filter platform payment records. |
 | POST | `/api/admin/payments/[paymentId]/refund` | Admin | Request an eligible provider refund with an audit trail. |
+| GET | `/api/admin/payout-accounts` | Admin | List professional payout details; defaults to accounts awaiting verification (`status=pending`). |
 | GET | `/api/admin/payouts` | Admin | List payout records. |
-| POST | `/api/admin/payouts/[payoutId]/process` | Admin | Process an eligible payout through configured provider integration. |
-| PATCH | `/api/admin/payout-accounts/[profileId]/verify` | Admin | Verify/restrict a professional payout account. |
+| POST | `/api/admin/payouts/[payoutId]/process` | Admin | Prepare a manual UPI payout, cancel an unsent preparation, or record the transaction reference after transfer; legacy Razorpay Route payouts remain supported. |
+| PATCH | `/api/admin/payout-accounts/[profileId]/verify` | Admin | Verify/reject/restrict submitted professional payout details; UPI ownership must be checked outside Styler. |
 | GET | `/api/admin/commissions` | Admin | Read commission configuration and overrides. |
 | PATCH | `/api/admin/commissions` | Admin | Update platform commission settings/overrides. |
 | GET | `/api/admin/reports` | Admin | Read booking, payment, and payout reporting summaries. |

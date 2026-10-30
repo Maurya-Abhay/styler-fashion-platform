@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { apiRequest } from "@/components/api-client";
+import { ProfessionalIncomingOffer } from "@/components/professional-incoming-offer";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo, LoadingBlock } from "@/components/ui";
 
@@ -31,6 +32,7 @@ const NAV: Record<Role, NavItem[]> = {
   ],
   admin: [
     { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+    { label: "Notifications", href: "/admin/notifications", icon: Bell },
     { label: "Applications", href: "/admin/applications", icon: FileCheck2 },
     { label: "Professionals", href: "/admin/professionals", icon: Users },
     { label: "Users", href: "/admin/users", icon: Users },
@@ -38,6 +40,7 @@ const NAV: Record<Role, NavItem[]> = {
     { label: "Requests", href: "/admin/booking-requests", icon: Activity },
     { label: "Bookings", href: "/admin/bookings", icon: CalendarDays },
     { label: "Payments", href: "/admin/payments", icon: CreditCard },
+    { label: "UPI Verification", href: "/admin/payout-accounts", icon: ShieldCheck },
     { label: "Payouts", href: "/admin/payouts", icon: WalletCards },
     { label: "Commissions", href: "/admin/commissions", icon: SlidersHorizontal },
     { label: "Reports", href: "/admin/reports", icon: BarChart3 },
@@ -77,6 +80,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [error, setError] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Authenticate once per portal session (layouts persist across client navigation).
   useEffect(() => {
@@ -98,6 +102,36 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
+
+  useEffect(() => {
+    let active = true;
+    let loadingCount = false;
+    const refreshCount = async () => {
+      if (document.hidden || loadingCount) return;
+      loadingCount = true;
+      try {
+        const result = await apiRequest<any>("/api/notifications?limit=1&unreadOnly=true");
+        if (active) setUnreadCount(Number(result?.total) || 0);
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : "Could not load notification count.");
+      } finally {
+        loadingCount = false;
+      }
+    };
+    void refreshCount();
+    const timer = window.setInterval(() => void refreshCount(), 15_000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void refreshCount();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onVisibilityChange);
+    };
+  }, [pathname, role]);
 
   const activeHref = useMemo(() => {
     if (role === "professional") {
@@ -142,7 +176,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-styler-line bg-styler-surface lg:flex">
         <div className="px-6 pb-4 pt-6"><Logo /></div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3" aria-label={`${ROLE_LABEL[role]} navigation`}>
+        <nav className="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 pb-3" aria-label={`${ROLE_LABEL[role]} navigation`}>
           {nav.map(({ href, label, icon: Icon }) => {
             const active = href === activeHref;
             return (
@@ -154,7 +188,12 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   active ? "bg-styler-accent text-white shadow-soft" : "text-styler-ink-soft hover:bg-styler-surface-2 hover:text-styler-ink"
                 }`}
               >
-                <Icon size={18} aria-hidden /> {label}
+                <Icon size={18} aria-hidden /> <span className="flex-1">{label}</span>
+                {label === "Notifications" && unreadCount > 0 && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-styler-accent-soft px-1.5 text-[10px] font-bold text-styler-accent">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -193,7 +232,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                 <X size={20} />
               </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto px-3 pt-3 pb-3" aria-label="Mobile navigation">
+            <nav className="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 pt-3 pb-3" aria-label="Mobile navigation">
               {nav.map(({ href, label, icon: Icon }) => {
                 const active = href === activeHref;
                 return (
@@ -206,7 +245,12 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                       active ? "bg-styler-accent text-white shadow-soft" : "text-styler-ink-soft hover:bg-styler-surface-2 hover:text-styler-ink"
                     }`}
                   >
-                    <Icon size={18} aria-hidden /> {label}
+                    <Icon size={18} aria-hidden /> <span className="flex-1">{label}</span>
+                    {label === "Notifications" && unreadCount > 0 && (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-styler-accent-soft px-1.5 text-[10px] font-bold text-styler-accent">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -245,6 +289,18 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               <h1 className="truncate text-base sm:text-lg font-semibold">{pageTitle}</h1>
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                href={role === "admin" ? "/admin/notifications" : "/professional/notifications"}
+                aria-label={unreadCount ? `${unreadCount} unread notifications` : "Notifications"}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-styler-line bg-styler-surface text-styler-ink-soft transition hover:text-styler-accent"
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-styler-accent px-1 text-[9px] font-bold text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Link>
               <ThemeToggle />
               <div className="hidden items-center gap-2 sm:flex">
                 <Avatar name={name} src={user.profileImageUrl} size={34} />
@@ -265,7 +321,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             </div>
           </div>
           {/* Mobile / tablet: quick scrollable link pills bar */}
-          <nav className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label={`${ROLE_LABEL[role]} quick navigation`}>
+          <nav className="no-scrollbar thin-scrollbar flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label={`${ROLE_LABEL[role]} quick navigation`}>
             {nav.map(({ href, label, icon: Icon }) => {
               const active = href === activeHref;
               return (
@@ -278,6 +334,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   }`}
                 >
                   <Icon size={14} aria-hidden /> {label}
+                  {label === "Notifications" && unreadCount > 0 && (
+                    <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-styler-accent-soft px-1 text-[9px] font-bold text-styler-accent">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -291,6 +352,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       </div>
 
       {/* Logout Confirmation Modal */}
+      {role === "professional" && <ProfessionalIncomingOffer />}
       {showLogoutModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div 

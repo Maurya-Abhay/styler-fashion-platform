@@ -10,7 +10,7 @@ import Availability from "@/models/Availability";
 import { dispatchOffersForRequest } from "@/lib/matching";
 import { calculatePriceBreakdown, getPlatformSettings } from "@/lib/commission";
 import { isWindowAvailable, reserveWindowBlocks, releaseReservation } from "@/lib/availability";
-import { notifyUser } from "@/lib/notifications";
+import { notifyAdmins, notifyUser } from "@/lib/notifications";
 import { createPayoutForCompletedBooking } from "@/lib/payout";
 import { AppError, type AddressInput, type AuthenticatedUser } from "@/types";
 
@@ -21,11 +21,34 @@ export interface CreateBookingRequestInput {
   referenceImages?: Array<{ fileId?: string; url: string; caption?: string }>;
   addressSnapshot: AddressInput;
   searchRadiusKm?: number;
+  paymentPreference?: "when_accepted" | "later";
   budgetMinPaise?: number;
   budgetMaxPaise?: number;
   preferredStartAt: Date;
   preferredEndAt: Date;
   requestedDurationMinutes?: number;
+}
+
+export function getCancellationRefundDecision(input: {
+  paymentStatus?: string | null;
+  hasPendingRefund?: boolean;
+  freeCancellation: boolean;
+  refundMode: "full_before_cutoff" | "manual_review";
+}) {
+  const hasCapturedPayment = ["captured", "partially_refunded"].includes(input.paymentStatus ?? "");
+  const hasPendingRefund = input.hasPendingRefund ?? false;
+  const refundRequired = Boolean(
+    hasCapturedPayment
+    && input.freeCancellation
+    && input.refundMode === "full_before_cutoff",
+  );
+  const refundReviewRequired = Boolean(
+    input.paymentStatus
+    && !hasPendingRefund
+    && !refundRequired
+    && input.refundMode === "manual_review",
+  );
+  return { refundRequired, refundReviewRequired };
 }
 
 export function validateQuotePrice(
@@ -64,6 +87,7 @@ export async function createBookingRequest(input: CreateBookingRequestInput) {
     referenceImages: input.referenceImages ?? [],
     addressSnapshot: { ...input.addressSnapshot, country: input.addressSnapshot.country ?? "India" },
     searchRadiusKm: input.searchRadiusKm ?? 25,
+    paymentPreference: input.paymentPreference ?? "when_accepted",
     budgetMinPaise: input.budgetMinPaise,
     budgetMaxPaise: input.budgetMaxPaise,
     preferredStartAt: start,
@@ -172,6 +196,7 @@ export async function acceptBookingOffer(input: {
         professionalId: profile._id,
         serviceId: service._id,
         addressSnapshot: request.addressSnapshot,
+        paymentPreference: request.paymentPreference ?? "when_accepted",
         serviceSnapshot: {
           title: service.title, category: service.category, description: service.description,
           durationMinutes: service.durationMinutes, travelBufferMinutes: service.travelBufferMinutes,
@@ -280,6 +305,7 @@ export async function cancelBooking(input: { bookingId: string; actor: Authentic
           bookingId: String(booking._id),
           status: "cancelled" as const,
           refundRequired: true,
+          refundReviewRequired: false,
           paymentId: String(priorPayment._id),
         };
       }
@@ -295,7 +321,7 @@ export async function cancelBooking(input: { bookingId: string; actor: Authentic
       && ["pending", "failed", "processed"].includes(item.status),
     );
     if (priorPayment && priorCancellationRefund) {
-      return { bookingId: String(booking._id), status: "cancelled" as const, refundRequired: true, paymentId: String(priorPayment._id) };
+      return { bookingId: String(booking._id), status: "cancelled" as const, refundRequired: true, refundReviewRequired: false, paymentId: String(priorPayment._id) };
     }
     throw new AppError("This booking has already been cancelled.", 409, "BOOKING_NOT_CANCELLABLE");
   }
@@ -308,14 +334,19 @@ export async function cancelBooking(input: { bookingId: string; actor: Authentic
   }
   const freeCancellation = !isCustomer || minutesBeforeStart >= settings.cancellationPolicy.customerFreeCancellationMinutesBefore;
   const payment = await Payment.findOne({ bookingId: booking._id, razorpayPaymentId: { $exists: true, $ne: null }, status: { $in: ["captured", "partially_refunded", "refund_pending"] } }).sort({ createdAt: -1 }).lean();
-  const refundRequired = Boolean(payment?.status === "captured" && freeCancellation && settings.cancellationPolicy.refundMode === "full_before_cutoff");
+  const { refundRequired, refundReviewRequired } = getCancellationRefundDecision({
+    paymentStatus: payment?.status,
+    hasPendingRefund: payment?.refunds?.some((refund: any) => refund.status === "pending"),
+    freeCancellation,
+    refundMode: settings.cancellationPolicy.refundMode,
+  });
   const now = new Date();
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
       const updated = await Booking.updateOne(
         { _id: booking._id, status: { $in: ["pending_payment", "confirmed"] } },
-        { $set: { status: "cancelled", cancelledAt: now, cancelledBy: input.actor.userId, cancellationReason: input.reason.slice(0, 1000), refundRequired }, $push: { statusHistory: { status: "cancelled", changedBy: input.actor.userId, note: input.reason.slice(0, 500), changedAt: now } } },
+        { $set: { status: "cancelled", cancelledAt: now, cancelledBy: input.actor.userId, cancellationReason: input.reason.slice(0, 1000), refundRequired, refundReviewRequired }, $push: { statusHistory: { status: "cancelled", changedBy: input.actor.userId, note: input.reason.slice(0, 500), changedAt: now } } },
         { session },
       );
       if (!updated.modifiedCount) throw new AppError("Booking status changed. Refresh and try again.", 409, "BOOKING_STATE_CHANGED");
@@ -323,8 +354,44 @@ export async function cancelBooking(input: { bookingId: string; actor: Authentic
       await BookingRequest.updateOne({ _id: booking.bookingRequestId }, { $set: { status: "cancelled", cancelledAt: now } }, { session });
     });
   } finally { await session.endSession(); }
-  await notifyUser({ recipientUserId: String(booking.customerId), type: "booking_cancelled", title: "Booking cancelled", message: refundRequired ? "Your booking was cancelled. A refund will be initiated according to the cancellation policy." : "Your booking was cancelled. If a refund applies, support/admin will review it.", channels: ["in_app", "email"], data: { bookingId: String(booking._id) }, dedupeKey: `booking-cancelled:${String(booking._id)}` });
-  return { bookingId: String(booking._id), status: "cancelled", refundRequired, paymentId: payment ? String(payment._id) : null };
+  const notifications = await Promise.allSettled([
+    notifyUser({
+      recipientUserId: String(booking.customerId),
+      type: "booking_cancelled",
+      title: "Booking cancelled",
+      message: refundRequired
+        ? "Your booking was cancelled. Your refund request is being sent to the payment provider."
+        : refundReviewRequired
+          ? "Your booking was cancelled. Your refund request needs a policy review by Styler support."
+          : payment
+            ? "Your booking was cancelled. This cancellation is outside the configured free-refund window."
+            : "Your booking was cancelled.",
+      channels: ["in_app", "email"],
+      data: { bookingId: String(booking._id) },
+      dedupeKey: `booking-cancelled:${String(booking._id)}`,
+    }),
+    ...(refundReviewRequired ? [notifyAdmins({
+      type: "system_message",
+      title: "Cancellation refund needs review",
+      message: `A paid booking was cancelled and requires a refund policy review (${String(booking._id)}).`,
+      data: { bookingId: String(booking._id), paymentId: payment ? String(payment._id) : null },
+      dedupeKey: `admin-cancellation-refund-review:${String(booking._id)}`,
+    })] : []),
+  ]);
+  for (const notification of notifications) {
+    if (notification.status === "rejected") {
+      console.error("Unable to send booking cancellation notification", notification.reason instanceof Error
+        ? notification.reason.message
+        : "Unknown notification error");
+    }
+  }
+  return {
+    bookingId: String(booking._id),
+    status: "cancelled",
+    refundRequired,
+    refundReviewRequired,
+    paymentId: payment ? String(payment._id) : null,
+  };
 }
 
 export async function expirePendingPaymentBookings(now = new Date()): Promise<number> {

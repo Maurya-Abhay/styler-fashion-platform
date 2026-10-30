@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock3,
   MapPin,
+  RefreshCw,
   Scissors,
   Search,
   ShieldCheck,
@@ -18,34 +19,8 @@ import {
   TrendingUp,
   WalletCards,
 } from "lucide-react";
-import { apiRequest, dateTime, humanize, money, unwrapItems } from "@/components/api-client";
+import { apiRequest, dateTime, humanize, money } from "@/components/api-client";
 import { Alert, LoadingBlock } from "@/components/ui";
-
-type ChartDay = { date: Date; amount: number };
-
-function getLastSevenDays(payouts: any[]): ChartDay[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-    return { date, amount: 0 };
-  });
-
-  for (const payout of payouts) {
-    const timestamp = payout.transferredAt || payout.createdAt;
-    if (!timestamp) continue;
-    const payoutDate = new Date(timestamp);
-    if (Number.isNaN(payoutDate.getTime())) continue;
-    payoutDate.setHours(0, 0, 0, 0);
-    const day = days.find((item) => item.date.getTime() === payoutDate.getTime());
-    if (day && payout.status === "transferred") {
-      day.amount += Number(payout.amountPaise || 0);
-    }
-  }
-
-  return days;
-}
 
 function StatusPill({ status }: { status: string }) {
   let tone = "bg-styler-surface-2 text-styler-ink-soft ";
@@ -70,10 +45,12 @@ export function ProfessionalDashboard() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [bookingTotal, setBookingTotal] = useState(0);
   const [earnings, setEarnings] = useState<any>(null);
+  const [weeklyEarnings, setWeeklyEarnings] = useState<any[]>([]);
+  const [readiness, setReadiness] = useState<any>(null);
+  const [reload, setReload] = useState(0);
   const [accepting, setAccepting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [optionalWarning, setOptionalWarning] = useState("");
   const [busy, setBusy] = useState(false);
   const [requestSearch, setRequestSearch] = useState("");
 
@@ -83,41 +60,20 @@ export function ProfessionalDashboard() {
     async function load() {
       setLoading(true);
       setError("");
-      setOptionalWarning("");
-
-      const optional = async <T,>(promise: Promise<T>, label: string): Promise<T | null> => {
-        try {
-          return await promise;
-        } catch (cause) {
-          if (active) {
-            setOptionalWarning((current) =>
-              [current, `${label}: ${cause instanceof Error ? cause.message : "temporarily unavailable"}`]
-                .filter(Boolean)
-                .join(" · ")
-            );
-          }
-          return null;
-        }
-      };
 
       try {
-        const [authData, profileData, requestData, bookingData, earningsData, availabilityData] = await Promise.all([
-          apiRequest<any>("/api/auth/me"),
-          apiRequest<any>("/api/professional/application"),
-          optional(apiRequest<any>("/api/professional/requests?limit=5"), "Requests"),
-          optional(apiRequest<any>("/api/professional/bookings?limit=100"), "Bookings"),
-          optional(apiRequest<any>("/api/professional/earnings?limit=100"), "Earnings"),
-          optional(apiRequest<any>("/api/professional/availability"), "Availability"),
-        ]);
+        const result = await apiRequest<any>("/api/professional/dashboard");
         if (!active) return;
-        setUser(authData?.user || authData);
-        setProfile(profileData);
-        setOffers(unwrapItems(requestData));
-        setRequestTotal(Number(requestData?.total ?? unwrapItems(requestData).length));
-        setBookings(unwrapItems(bookingData));
-        setBookingTotal(Number(bookingData?.total ?? unwrapItems(bookingData).length));
-        setEarnings(earningsData);
-        setAccepting(Boolean(availabilityData?.acceptingRequests));
+        setUser(result.user);
+        setProfile(result.profile);
+        setOffers(result.offers || []);
+        setRequestTotal(Number(result.requestTotal) || 0);
+        setBookings(result.bookings || []);
+        setBookingTotal(Number(result.bookingTotal) || 0);
+        setEarnings(result.earnings);
+        setWeeklyEarnings(result.chartDays || []);
+        setReadiness(result.readiness);
+        setAccepting(Boolean(result.accepting));
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load your workspace.");
       } finally {
@@ -129,7 +85,7 @@ export function ProfessionalDashboard() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reload]);
 
   async function toggleAvailability(value: boolean) {
     setBusy(true);
@@ -140,6 +96,7 @@ export function ProfessionalDashboard() {
         body: JSON.stringify({ acceptingRequests: value }),
       });
       setAccepting(Boolean(result?.acceptingRequests ?? value));
+      setReadiness((current: any) => current ? { ...current, acceptingRequests: value } : current);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not update your availability.");
     } finally {
@@ -174,7 +131,10 @@ export function ProfessionalDashboard() {
     );
   }, [offers, requestSearch]);
 
-  const chartDays = useMemo(() => getLastSevenDays(unwrapItems(earnings)), [earnings]);
+  const chartDays = useMemo(
+    () => weeklyEarnings.map((item) => ({ date: new Date(item.date), amount: Number(item.amount) || 0 })),
+    [weeklyEarnings],
+  );
   const maxChartAmount = Math.max(...chartDays.map((day) => day.amount), 1);
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Good Morning" : currentHour < 17 ? "Good Afternoon" : "Good Evening";
@@ -183,7 +143,6 @@ export function ProfessionalDashboard() {
   return (
     <div className="space-y-5">
       {error && <Alert tone="error">{error}</Alert>}
-      {optionalWarning && <Alert tone="warning">{optionalWarning}</Alert>}
 
       {loading ? (
         <div className="rounded border border-styler-line bg-styler-surface p-12 ">
@@ -259,6 +218,15 @@ export function ProfessionalDashboard() {
                   >
                     View Calendar
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => setReload((value) => value + 1)}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-styler-line px-3 py-1 text-[11px] font-semibold text-styler-ink-soft transition hover:bg-styler-surface-2 disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+                    Refresh
+                  </button>
                 </div>
               </div>
 
@@ -304,7 +272,7 @@ export function ProfessionalDashboard() {
           </div>
 
           {/* 4 Primary Top Stats Cards (Fully Dynamic) */}
-          <section className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             <article className="rounded border border-styler-line bg-styler-surface p-4 shadow-2xs">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-medium text-styler-muted ">Total Bookings</p>
@@ -340,6 +308,32 @@ export function ProfessionalDashboard() {
                 {money(earnings?.summary?.paidPaise)}
               </p>
               <p className="mt-1 text-[10px] font-medium text-styler-muted">Transferred payouts</p>
+            </article>
+
+            <article className="rounded border border-styler-line bg-styler-surface p-4 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium text-styler-muted ">Pending Payouts</p>
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                  <Clock3 size={14} />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-styler-ink ">
+                {money(earnings?.summary?.pendingPaise)}
+              </p>
+              <p className="mt-1 text-[10px] font-medium text-styler-muted">{earnings?.summary?.pendingCount || 0} payout(s) awaiting action</p>
+            </article>
+
+            <article className="rounded border border-styler-line bg-styler-surface p-4 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium text-styler-muted ">Active Services</p>
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <Scissors size={14} />
+                </span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-styler-ink ">{readiness?.activeServiceCount ?? 0}</p>
+              <Link href="/professional/services" className="mt-1 block text-[10px] font-semibold text-styler-accent hover:underline">
+                Manage your listings
+              </Link>
             </article>
 
             <article className="rounded border border-styler-line bg-styler-surface p-4 shadow-2xs">

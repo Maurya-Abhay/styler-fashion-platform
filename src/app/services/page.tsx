@@ -1,17 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  Activity,
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
   Clock3,
+  Heart,
+  Palette,
+  Ruler,
   Search,
+  Scissors,
   ShieldCheck,
+  Shirt,
   Sparkles,
+  WandSparkles,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { CATEGORIES } from "@/lib/categories";
+import { CATEGORIES, FEATURED_GROUPS } from "@/lib/categories";
 
 export const metadata: Metadata = {
   title: "Services | Styler",
@@ -58,10 +65,20 @@ type Params = Promise<{
   q?: string | string[];
 }>;
 
-const BASE_URL =
-  process.env.APP_URL ||
-  process.env.NEXT_PUBLIC_APP_URL ||
-  "http://localhost:3000";
+const configuredBaseUrl = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.APP_URL,
+].map((value) => value?.trim())
+  .find((value) => {
+    if (!value) return false;
+    try {
+      return ["http:", "https:"].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  });
+const BASE_URL = configuredBaseUrl ||
+  (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://styler.com");
 
 const PHOTOS = [
   "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1000&q=85",
@@ -110,18 +127,28 @@ function extractServices(payload: unknown): RawService[] {
   return list ? list as RawService[] : [];
 }
 
-async function loadServices(): Promise<RawService[]> {
+async function loadServices(): Promise<{ items: RawService[]; error?: string }> {
   try {
     const url = new URL("/api/services", BASE_URL);
     url.searchParams.set("limit", "100");
 
     const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return {
+        items: [],
+        error: "Service listings are temporarily unavailable. Please try again shortly.",
+      };
+    }
 
     const payload: unknown = await response.json();
-    return extractServices(payload).filter((s) => s.isActive !== false);
+    return {
+      items: extractServices(payload).filter((s) => s.isActive !== false),
+    };
   } catch {
-    return [];
+    return {
+      items: [],
+      error: "We couldn't load services right now. Please try again shortly.",
+    };
   }
 }
 
@@ -199,6 +226,32 @@ function formatDuration(minutes?: number) {
   return remaining ? `${hours} hr ${remaining} min` : `${hours} hr`;
 }
 
+const CATEGORY_ICON_BY_ID: Record<string, typeof Sparkles> = {
+  hair_styling: WandSparkles,
+  makeup: Palette,
+  skincare: Sparkles,
+  nails: Sparkles,
+  massage: Heart,
+  home_cleaning: Sparkles,
+  plumbing: Ruler,
+  fitness_wellness: Activity,
+  lehenga_stitching: Sparkles,
+  custom_clothing: Shirt,
+  alterations: Scissors,
+  personal_styling: WandSparkles,
+  fashion_consulting: Palette,
+  special_occasion_wear: Shirt,
+  other: Sparkles,
+};
+
+const CATEGORY_GROUP_ORDER: Record<string, number> = {
+  fashion: 0,
+  beauty: 1,
+  wellness: 2,
+  home: 3,
+  repairs: 4,
+};
+
 export default async function ServicesPage({
   searchParams,
 }: {
@@ -208,13 +261,17 @@ export default async function ServicesPage({
   const query = getParam(params.q).trim();
   const group = getParam(params.group);
 
-  const allServices = (await loadServices())
+  const serviceResult = await loadServices();
+  const allServices = serviceResult.items
     .map(normalize)
     .filter((s): s is Service => s !== null);
 
   const categories = CATEGORIES.map((category) => ({
     key: slugify(category.slug),
     label: category.label,
+    group: category.group,
+    Icon: CATEGORY_ICON_BY_ID[category.slug] || Sparkles,
+    count: allServices.filter((service) => service.categoryKey === slugify(category.slug)).length,
   }));
 
   const activeGroup = categories.some((c) => c.key === group) ? group : "";
@@ -230,73 +287,66 @@ export default async function ServicesPage({
       <SiteHeader />
 
       <main>
-        {/* Marketplace hero */}
-        <section className="px-4 pt-5 sm:px-6 lg:px-8">
-          <div className="relative isolate mx-auto flex min-h-[540px] max-w-[1600px] items-center overflow-hidden rounded-[28px] bg-[#210d20] sm:min-h-[620px] lg:min-h-[690px]">
-            <img
-              src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=2000&q=90"
-              alt="Styler service professionals"
-              fetchPriority="high"
-              className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-            />
-            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#210d20]/95 via-[#210d20]/75 to-[#210d20]/10" />
-            <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#210d20]/60 via-transparent to-black/10" />
-
-            <div className="w-full max-w-3xl px-6 py-16 sm:px-12 lg:px-16 lg:py-24">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-pink-200 backdrop-blur-md">
-                <Sparkles size={14} /> Trusted local services
+        <section className="border-b border-styler-line bg-styler-surface-2/60">
+          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center lg:px-8 lg:py-14">
+            <div className="max-w-3xl">
+              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-styler-accent">
+                <Sparkles size={15} /> Styler services
               </span>
-
-              <h1 className="mt-7 text-4xl font-bold leading-[1.08] tracking-tight text-white sm:text-6xl lg:text-7xl">
-                Great service.
-                <br />
-                Right nearby.
-                <br />
-                <span className="font-serif italic text-pink-300">
-                  Made personal.
-                </span>
+              <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-styler-ink sm:text-4xl lg:text-5xl">
+                Find the right service for{" "}
+                <span className="text-styler-accent">what matters to you.</span>
               </h1>
-
-              <p className="mt-6 max-w-xl text-base leading-7 text-white/80 sm:text-lg">
-                Browse fashion, beauty, wellness, home and repair services from approved professionals.
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-styler-ink-soft sm:text-base sm:leading-7">
+                Explore services across fashion, beauty, wellness and home. Compare clear pricing and book with approved professionals.
               </p>
 
               <form
                 action="/services"
                 method="get"
                 role="search"
-                className="mt-8 flex max-w-2xl flex-col gap-2 rounded-2xl border border-white/20 bg-styler-surface p-2 shadow-2xl sm:flex-row"
+                className="mt-6 flex max-w-2xl flex-col gap-2 border border-styler-line bg-styler-surface p-2 shadow-soft focus-within:border-styler-line-strong sm:flex-row sm:items-center"
               >
                 {activeGroup && <input type="hidden" name="group" value={activeGroup} />}
-
-                <label className="flex min-w-0 flex-1 items-center gap-3 px-3">
-                  <Search size={20} className="shrink-0 text-styler-accent" />
+                <label className="flex min-w-0 flex-1 items-center gap-3 px-2">
+                  <Search size={18} aria-hidden="true" className="shrink-0 text-styler-accent" />
                   <input
                     name="q"
                     type="search"
                     defaultValue={query}
-                    placeholder="Search tailoring, makeup, cleaning, plumbing..."
+                    placeholder="Search tailoring, makeup, cleaning..."
                     aria-label="Search services"
-                    className="min-w-0 flex-1 bg-transparent py-3 text-sm text-styler-ink outline-none placeholder:text-styler-muted"
+                    className="min-w-0 flex-1 bg-transparent py-3 text-sm text-styler-ink outline-none placeholder:text-styler-muted focus-visible:!outline-none"
                   />
                 </label>
-
-                <button className="inline-flex items-center justify-center gap-2 rounded-xl bg-styler-accent px-6 py-3.5 text-sm font-bold text-white transition hover:bg-styler-accent-strong">
-                  Explore services <ArrowUpRight size={17} />
+                <button className="inline-flex items-center justify-center gap-2 bg-styler-accent px-5 py-3 text-sm font-bold text-white transition hover:bg-styler-accent-strong">
+                  Search services <ArrowUpRight size={16} />
                 </button>
               </form>
+            </div>
 
-              <div className="mt-6 flex flex-wrap gap-4 text-xs font-medium text-white/90">
-                <span className="flex items-center gap-2"><BadgeCheck size={16} className="text-pink-300" /> Approved professionals</span>
-                <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-pink-300" /> Secure payments</span>
-                <span className="flex items-center gap-2"><Clock3 size={16} className="text-pink-300" /> Easy booking</span>
-              </div>
+            <div className="grid grid-cols-3 divide-x divide-styler-line border-y border-styler-line py-4 lg:grid-cols-1 lg:divide-x-0 lg:divide-y lg:border-y-0 lg:py-0">
+              {[
+                { icon: BadgeCheck, title: "Approved", detail: "Professionals reviewed" },
+                { icon: ShieldCheck, title: "Secure", detail: "Protected payments" },
+                { icon: Clock3, title: "Simple", detail: "Easy booking process" },
+              ].map(({ icon: Icon, title, detail }) => (
+                <div key={title} className="flex flex-col items-center gap-2 px-2 text-center lg:flex-row lg:items-center lg:gap-3 lg:px-0 lg:py-4 lg:text-left">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center bg-styler-surface text-styler-accent">
+                    <Icon size={18} aria-hidden="true" />
+                  </span>
+                  <span>
+                    <strong className="block text-xs font-bold sm:text-sm">{title}</strong>
+                    <span className="mt-0.5 hidden text-xs text-styler-muted sm:block">{detail}</span>
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
         {/* Category filters */}
-        <section className="mx-auto max-w-7xl px-4 pb-4 pt-16 sm:px-6 lg:px-8" aria-label="Filter services by category">
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8" aria-label="Filter services by category">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Explore services</p>
@@ -304,7 +354,7 @@ export default async function ServicesPage({
                 What do you need help with?
               </h2>
               <p className="mt-3 text-sm text-styler-ink-soft">
-                Choose from fashion, beauty, wellness, home and repair categories.
+                Browse by category and see available services in each area.
               </p>
             </div>
             <Link href="/professionals" className="inline-flex items-center gap-2 text-sm font-bold text-styler-accent hover:underline">
@@ -312,31 +362,60 @@ export default async function ServicesPage({
             </Link>
           </div>
 
-          <nav aria-label="Service categories" className="mt-7 flex gap-2 overflow-x-auto pb-3">
-            <Link
-              href={query ? `/services?q=${encodeURIComponent(query)}` : "/services"}
-              className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
-                !activeGroup
-                  ? "border-styler-accent bg-styler-accent text-white"
-                  : "border-styler-line bg-styler-surface text-styler-ink hover:border-styler-accent"
-              }`}
-            >
-              All services <span className="ml-1 opacity-70">{allServices.length}</span>
-            </Link>
-
-            {categories.map((category) => (
+          <nav aria-label="Service categories" className="mt-7 space-y-7">
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-styler-ink">All categories</h3>
               <Link
-                key={category.key}
-                href={`/services?group=${encodeURIComponent(category.key)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
-                className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
-                  activeGroup === category.key
+                href={query ? `/services?q=${encodeURIComponent(query)}` : "/services"}
+                aria-current={!activeGroup ? "page" : undefined}
+                className={`inline-flex items-center gap-2 border px-3.5 py-2.5 text-sm font-semibold transition ${
+                  !activeGroup
                     ? "border-styler-accent bg-styler-accent text-white"
                     : "border-styler-line bg-styler-surface text-styler-ink hover:border-styler-accent"
                 }`}
               >
-                {category.label}
+                All services <span className="text-xs opacity-75">{allServices.length}</span>
               </Link>
-            ))}
+            </div>
+            {[...FEATURED_GROUPS]
+              .sort((a, b) => CATEGORY_GROUP_ORDER[a.key] - CATEGORY_GROUP_ORDER[b.key])
+              .map((groupMeta) => {
+              const groupCategories = categories.filter((category) => category.group === groupMeta.key);
+              if (!groupCategories.length) return null;
+
+              return (
+                <div key={groupMeta.key}>
+                      <h3 className="mb-3 text-sm font-semibold text-styler-ink">{groupMeta.label}</h3>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                        {groupCategories.map(({ key, label, Icon, count }) => {
+                          const selected = activeGroup === key;
+                          return (
+                            <Link
+                              key={key}
+                              href={`/services?group=${encodeURIComponent(key)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+                              aria-current={selected ? "page" : undefined}
+                              className={`flex min-h-16 items-center gap-2.5 border px-3 py-2.5 transition ${
+                                selected
+                                  ? "border-styler-accent bg-styler-accent-soft"
+                                  : "border-styler-line bg-styler-surface hover:border-styler-line-strong hover:bg-styler-surface-2"
+                              }`}
+                            >
+                              <span className={`grid h-9 w-9 shrink-0 place-items-center ${selected ? "bg-styler-surface text-styler-accent" : "bg-styler-surface-2 text-styler-accent"}`}>
+                                <Icon size={17} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-xs font-semibold text-styler-ink">{label}</span>
+                                <span className="mt-0.5 block text-[10px] text-styler-muted">
+                                  {count ? `${count} ${count === 1 ? "service" : "services"}` : "View category"}
+                                </span>
+                              </span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                </div>
+              );
+            })}
           </nav>
         </section>
 
@@ -369,12 +448,16 @@ export default async function ServicesPage({
             )}
           </div>
 
-          {services.length > 0 ? (
+          {serviceResult.error ? (
+            <div role="alert" className="mt-7 border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+              {serviceResult.error}
+            </div>
+          ) : services.length > 0 ? (
             <div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {services.map((service) => (
                 <article
                   key={service.id}
-                  className="group overflow-hidden rounded-2xl border border-styler-line bg-styler-surface shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+                  className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface shadow-soft transition duration-300 hover:-translate-y-0.5 hover:shadow-panel"
                 >
                   <Link
                     href={`/professionals?q=${encodeURIComponent(service.title)}`}
@@ -388,11 +471,11 @@ export default async function ServicesPage({
                         loading="lazy"
                         className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
-                      <span className="absolute bottom-3 left-3 rounded-full border border-white/70 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-styler-accent shadow-sm">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                      <span className="absolute bottom-3 left-3 border border-white/70 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-styler-accent shadow-sm">
                         {service.category}
                       </span>
-                      <span className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-styler-accent shadow-sm transition group-hover:rotate-45">
+                      <span className="absolute right-3 top-3 grid h-9 w-9 place-items-center bg-white/95 text-styler-accent shadow-sm transition group-hover:rotate-45">
                         <ArrowUpRight size={17} />
                       </span>
                     </div>
@@ -432,7 +515,7 @@ export default async function ServicesPage({
                         ) : null}
                       </div>
 
-                      <div className="mt-4 flex items-center justify-between rounded-xl bg-styler-accent-soft px-3 py-2.5 text-sm font-semibold text-styler-accent">
+                      <div className="mt-4 flex items-center justify-between bg-styler-accent-soft px-3 py-2.5 text-sm font-semibold text-styler-accent">
                         Find a professional <ArrowRight size={16} />
                       </div>
                     </div>
@@ -441,8 +524,8 @@ export default async function ServicesPage({
               ))}
             </div>
           ) : (
-            <div className="mt-7 rounded-3xl border border-dashed border-styler-line bg-styler-surface px-6 py-14 text-center">
-              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-styler-accent-soft text-styler-accent">
+            <div className="mt-7 border border-dashed border-styler-line bg-styler-surface px-6 py-14 text-center">
+              <span className="mx-auto grid h-14 w-14 place-items-center bg-styler-accent-soft text-styler-accent">
                 <Sparkles size={25} />
               </span>
               <h3 className="mt-5 text-xl font-bold text-styler-ink">
@@ -457,13 +540,13 @@ export default async function ServicesPage({
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <Link
                   href="/services"
-                  className="rounded-xl border border-styler-line px-5 py-3 text-sm font-semibold text-styler-ink transition hover:border-styler-accent"
+                  className="border border-styler-line px-5 py-3 text-sm font-semibold text-styler-ink transition hover:border-styler-accent"
                 >
                   View all services
                 </Link>
                 <Link
                   href="/professionals"
-                  className="rounded-xl bg-styler-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-styler-accent-strong"
+                  className="bg-styler-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-styler-accent-strong"
                 >
                   Browse professionals <ArrowRight size={16} className="ml-1 inline" />
                 </Link>
@@ -472,38 +555,25 @@ export default async function ServicesPage({
           )}
         </section>
 
-        {/* Premium CTA */}
-        <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-          <div className="relative isolate overflow-hidden rounded-[28px] bg-[#291025] px-6 py-10 text-white sm:px-10 sm:py-14 lg:px-14">
-            <img
-              src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1500&q=85"
-              alt=""
-              loading="lazy"
-              className="absolute inset-0 -z-20 h-full w-full object-cover object-center opacity-35"
-            />
-            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#291025] via-[#291025]/90 to-[#291025]/40" />
-
+        <section className="mx-auto max-w-7xl px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-6 border border-styler-line bg-styler-surface-2/70 px-5 py-7 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div className="max-w-2xl">
-              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-pink-200">
+              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-styler-accent">
                 <Sparkles size={15} /> Styler marketplace
               </span>
-              <h2 className="mt-4 text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-                Find the right help for{" "}
-                <span className="font-serif italic text-pink-300">
-                  what you need.
-                </span>
+              <h2 className="mt-3 text-2xl font-bold leading-tight text-styler-ink sm:text-3xl">
+                Need help choosing a service?
               </h2>
-              <p className="mt-4 max-w-lg text-sm leading-7 text-white/75 sm:text-base">
-                Explore approved professionals, compare services and request the help you need.
+              <p className="mt-2 text-sm leading-6 text-styler-ink-soft">
+                Browse approved professionals and find the right person for your needs.
               </p>
-
-              <Link
-                href="/professionals"
-                className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-[#45133f] transition hover:bg-pink-100"
-              >
-                Find your professional <ArrowUpRight size={17} />
-              </Link>
             </div>
+            <Link
+              href="/professionals"
+              className="inline-flex shrink-0 items-center justify-center gap-2 bg-styler-accent px-5 py-3 text-sm font-bold text-white transition hover:bg-styler-accent-strong"
+            >
+              Browse professionals <ArrowUpRight size={16} />
+            </Link>
           </div>
         </section>
 

@@ -6,7 +6,7 @@ import { sendWebPushToUser } from "@/lib/web-push";
 export type NotificationChannel = "in_app" | "email" | "web_push";
 export type NotificationType =
   | "booking_request_received" | "booking_offer_accepted" | "booking_offer_closed"
-  | "booking_confirmed" | "booking_cancelled" | "booking_started" | "booking_completed"
+  | "booking_confirmed" | "booking_cancelled" | "booking_started" | "booking_completed" | "booking_update"
   | "payment_success" | "payment_failed" | "refund_updated" | "application_status"
   | "payout_status" | "review_received" | "system_message";
 
@@ -42,6 +42,26 @@ export async function notifyUser(input: NotifyUserInput) {
       if (existing) return existing;
     }
     throw error;
+  }
+}
+
+export async function notifyAdmins(input: Omit<NotifyUserInput, "recipientUserId">) {
+  const admins = await User.find({ role: "admin", accountStatus: "active" })
+    .select("_id")
+    .lean();
+  const deliveries = await Promise.allSettled(admins.map((admin: any) =>
+    notifyUser({
+      ...input,
+      recipientUserId: String(admin._id),
+      dedupeKey: input.dedupeKey ? `${input.dedupeKey}:admin:${String(admin._id)}` : undefined,
+    }),
+  ));
+  for (const delivery of deliveries) {
+    if (delivery.status === "rejected") {
+      console.error("Unable to queue admin notification", delivery.reason instanceof Error
+        ? delivery.reason.message
+        : "Unknown error");
+    }
   }
 }
 
@@ -92,10 +112,17 @@ async function deliverClaimedNotification(input: {
   let lastError: string | undefined;
 
   try {
-    const user = await User.findById(note.recipientUserId).select("name email accountStatus").lean();
+    const user = await User.findById(note.recipientUserId)
+      .select("name email accountStatus notificationPreferences")
+      .lean();
     if (!user || user.accountStatus !== "active") {
       status = "skipped";
       lastError = "Recipient account is unavailable or inactive.";
+    } else if (
+      user.notificationPreferences?.[channel === "web_push" ? "webPush" : "email"] === false
+    ) {
+      status = "skipped";
+      lastError = "Recipient disabled this notification channel.";
     } else if (channel === "email") {
       const result = await sendBookingEmail({
         email: user.email,

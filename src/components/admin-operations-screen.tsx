@@ -17,7 +17,7 @@ import {
 import { apiRequest, dateTime, humanize, money, unwrapItems } from "@/components/api-client";
 import { Alert, Button, Card, EmptyState, LoadingBlock, PageHeading, StatusBadge } from "@/components/ui";
 
-type AdminOperationKind = "professionals" | "requests" | "bookings" | "payments" | "payouts" | "reports" | "audit-logs";
+type AdminOperationKind = "professionals" | "requests" | "bookings" | "payments" | "payout-accounts" | "payouts" | "reports" | "audit-logs";
 
 const config: Record<AdminOperationKind, { title: string; description: string; endpoint: string; icon: typeof Users }> = {
   professionals: {
@@ -44,9 +44,15 @@ const config: Record<AdminOperationKind, { title: string; description: string; e
     endpoint: "/api/admin/payments?limit=100",
     icon: CreditCard,
   },
+  "payout-accounts": {
+    title: "UPI Verification",
+    description: "Review submitted professional UPI details, verify payees, or request corrections.",
+    endpoint: "/api/admin/payout-accounts?limit=100",
+    icon: ShieldCheck,
+  },
   payouts: {
     title: "Professional Payouts",
-    description: "Track amounts owed and process eligible transfers when Razorpay Route is configured.",
+    description: "Verify professional UPI details, prepare manual transfers, and record each transaction reference.",
     endpoint: "/api/admin/payouts?limit=100",
     icon: WalletCards,
   },
@@ -85,7 +91,7 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
     if (kind !== "reports") {
       url.searchParams.set("page", String(page));
     }
-    if ((kind === "payments" || kind === "payouts" || kind === "requests") && status) {
+    if ((kind === "payments" || kind === "payout-accounts" || kind === "payouts" || kind === "requests") && status) {
       url.searchParams.set("status", status);
     }
 
@@ -152,11 +158,24 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
       setError("Professional profile ID is unavailable.");
       return;
     }
-    const providerAccountId = window.prompt(
-      "Enter the professional's Razorpay Route linked-account ID:",
-      professional.payoutAccount?.providerAccountId || "",
-    );
-    if (!providerAccountId?.trim()) return;
+    const account = professional.payoutAccount;
+    const isLegacyRoute = account?.provider === "razorpay_route";
+    if (isLegacyRoute) {
+      const providerAccountId = window.prompt(
+        "Enter the professional's Razorpay Route linked-account ID:",
+        account.providerAccountId || "",
+      );
+      if (!providerAccountId?.trim()) return;
+      account.providerAccountId = providerAccountId.trim();
+    } else {
+      if (!account?.upiId || !account?.accountHolderName) {
+        setError("The professional must submit a UPI ID and account-holder name before verification.");
+        return;
+      }
+      if (!window.confirm(
+        `Verify these UPI payee details after checking them outside Styler?\n\n${account.accountHolderName}\n${account.upiId}\n\nA UPI ID alone does not prove account ownership.`,
+      )) return;
+    }
 
     setBusy(id);
     setError("");
@@ -164,12 +183,36 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
     try {
       await apiRequest(`/api/admin/payout-accounts/${id}/verify`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "verified", providerAccountId: providerAccountId.trim() }),
+        body: JSON.stringify({
+          status: "verified",
+          ...(isLegacyRoute ? { providerAccountId: account.providerAccountId } : {}),
+        }),
       });
-      setNotice("Payout account verified.");
+      setNotice("Payout details verified. Eligible held payouts are now ready for processing.");
       setReload((value) => value + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not verify payout account.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function rejectPayoutAccount(professional: any) {
+    const id = String(professional._id || professional.id || "");
+    const reason = window.prompt("Explain what the professional needs to correct:", professional.payoutAccount?.reviewReason || "");
+    if (!id || !reason?.trim() || reason.trim().length < 3) return;
+    setBusy(id);
+    setError("");
+    setNotice("");
+    try {
+      await apiRequest(`/api/admin/payout-accounts/${id}/verify`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "rejected", reviewReason: reason.trim() }),
+      });
+      setNotice("UPI details rejected with correction guidance sent to the professional.");
+      setReload((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not reject payout details.");
     } finally {
       setBusy("");
     }
@@ -197,18 +240,48 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
     }
   }
 
-  async function processPayout(payout: any) {
-    if (!window.confirm("Process this payout through the configured Razorpay Route account?")) return;
+  async function processPayout(payout: any, action: "release_verified_holds" | "prepare" | "cancel_preparation" | "record_transfer" | "process_route") {
     const id = String(payout._id);
+    let body: Record<string, string> = { action };
+    if (action === "release_verified_holds") {
+      if (!window.confirm("Release eligible on-hold payouts for this professional to their verified UPI details? No money is transferred by this action.")) return;
+    } else if (action === "prepare") {
+      const currentAccount = payout.professionalId?.payoutAccount;
+      const recipient = ["pending", "failed", "on_hold"].includes(payout.status)
+        ? currentAccount || payout.payoutRecipient || {}
+        : payout.payoutRecipient || currentAccount || {};
+      if (!window.confirm(
+        `Prepare ${money(payout.amountPaise)} for manual UPI transfer to:\n${recipient.accountHolderName || "Name unavailable"}\n${recipient.upiId || "UPI ID unavailable"}\n\nVerify the customer payment and beneficiary before sending funds.`,
+      )) return;
+    } else if (action === "cancel_preparation") {
+      if (!window.confirm("Cancel this payout preparation? Use this only if no UPI transfer has been sent.")) return;
+    } else if (action === "record_transfer") {
+      if (!window.confirm("Confirm that the UPI transfer has already been completed to the verified payee.")) return;
+      const transactionReference = window.prompt("Enter the UPI transaction reference / UTR:");
+      if (!transactionReference?.trim() || transactionReference.trim().length < 3) return;
+      body = { action, transactionReference: transactionReference.trim() };
+    } else if (!window.confirm("Process this legacy payout through the configured Razorpay Route account?")) {
+      return;
+    }
     setBusy(id);
     setError("");
     setNotice("");
     try {
-      await apiRequest(`/api/admin/payouts/${id}/process`, {
+      const result = await apiRequest<{ released?: number }>(`/api/admin/payouts/${id}/process`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       });
-      setNotice("Payout processing request sent.");
+      setNotice(action === "prepare"
+        ? "Payout prepared. Transfer the amount outside Styler, then record its UTR."
+        : action === "release_verified_holds"
+          ? result.released
+            ? "This payout is ready. Click Prepare UPI Payout to continue."
+            : "This payout was already released and is ready to prepare."
+        : action === "record_transfer"
+          ? "UPI transfer reference recorded and payout marked as transferred."
+          : action === "cancel_preparation"
+            ? "Payout preparation cancelled."
+            : "Razorpay Route payout processing request sent.");
       setReload((value) => value + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Payout could not be processed.");
@@ -244,33 +317,45 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
         title={definition.title}
         description={definition.description}
         action={
-          <Button variant="secondary" onClick={() => setReload((value) => value + 1)} loading={loading}>
-            <RefreshCw size={14} className="mr-1.5" /> Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {kind === "payouts" && (
+              <Link
+                href="/admin/payout-accounts"
+                className="inline-flex items-center gap-1.5 rounded border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <ShieldCheck size={14} /> Verify UPI accounts
+              </Link>
+            )}
+            <Button variant="secondary" onClick={() => setReload((value) => value + 1)} loading={loading}>
+              <RefreshCw size={14} className="mr-1.5" /> Refresh
+            </Button>
+          </div>
         }
       />
 
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
-      {(kind === "payments" || kind === "payouts" || kind === "requests") && (
+      {(kind === "payments" || kind === "payout-accounts" || kind === "payouts" || kind === "requests") && (
         <div className="flex items-center justify-between gap-3 bg-white dark:bg-[#1a1f2b] p-3 rounded border border-gray-100 dark:border-gray-800 shadow-xs">
           <div className="w-full sm:w-64">
             <label className="sr-only" htmlFor="admin-record-status">Filter by status</label>
             <select
               id="admin-record-status"
               className="w-full rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#121620] px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:border-pink-500 focus:outline-none"
-              value={status}
+              value={kind === "payout-accounts" && !status ? "pending" : status}
               onChange={(event) => {
                 setStatus(event.target.value);
                 setPage(1);
               }}
             >
-              <option value="">All Statuses</option>
+              <option value={kind === "payout-accounts" ? "all" : ""}>All Statuses</option>
               {(kind === "payments"
                 ? ["created", "authorized", "captured", "failed", "refund_pending", "partially_refunded", "refunded"]
-                : kind === "payouts"
-                  ? ["pending", "on_hold", "processing", "transferred", "failed", "reversed"]
+                : kind === "payout-accounts"
+                  ? ["pending", "verified", "rejected", "restricted", "not_started"]
+                  : kind === "payouts"
+                  ? ["pending", "on_hold", "processing", "transferred", "failed", "reversed", "cancelled", "review_required"]
                   : ["matching", "offers_sent", "assigned", "no_match", "expired", "cancelled"]
               ).map((value) => (
                 <option key={value} value={value}>
@@ -318,11 +403,14 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
                 const id = String(record._id || record.id);
                 const profile = record.professionalId && typeof record.professionalId === "object" ? record.professionalId : null;
                 const user = record.userId && typeof record.userId === "object" ? record.userId : null;
+                const professionalRecord = kind === "payout-accounts" ? record : profile;
                 const title = kind === "requests"
                   ? `${humanize(record.serviceCategory || "service")} · ${record.customer?.name || "Customer"}`
                   : (
+                  professionalRecord?.displayName ||
                   record.displayName ||
                   record.name ||
+                  user?.name ||
                   record.serviceSnapshot?.title ||
                   record.action ||
                   record.type ||
@@ -330,7 +418,12 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
                   record.providerTransferId ||
                   id
                 );
-                const recordStatus = record.applicationStatus || record.status || record.accountStatus || "unknown";
+                const recordStatus = kind === "payout-accounts"
+                  ? record.payoutAccount?.status || "not_started"
+                  : record.applicationStatus || record.status || record.accountStatus || "unknown";
+                const payoutRecipient = ["pending", "failed", "on_hold"].includes(record.status)
+                  ? profile?.payoutAccount || record.payoutRecipient
+                  : record.payoutRecipient || profile?.payoutAccount;
 
                 return (
                   <Card className="rounded p-4 border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b] shadow-xs flex flex-col sm:flex-row items-start gap-3" key={id}>
@@ -363,22 +456,46 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
                         {kind === "requests" && <span>{record.offersSentCount || 0} offers sent</span>}
                         {kind === "requests" && <span>Radius: {record.searchRadiusKm ?? 25} km</span>}
                         {kind === "requests" && record.noMatchReason && <span>{record.noMatchReason}</span>}
-                        {(record.city || profile?.displayName) && (
-                          <span>{[record.city, profile?.displayName].filter(Boolean).join(" · ")}</span>
+                        {(record.city || professionalRecord?.city) && (
+                          <span>{[record.city || professionalRecord?.city].filter(Boolean).join(" · ")}</span>
                         )}
                         {record.amountPaise != null && <strong className="font-bold text-gray-900 dark:text-white">{money(record.amountPaise)}</strong>}
                         {record.priceSnapshot?.totalPaise != null && <strong className="font-bold text-gray-900 dark:text-white">{money(record.priceSnapshot.totalPaise)}</strong>}
                         {record.amountPaise == null && record.netAmountPaise != null && <strong className="font-bold text-gray-900 dark:text-white">{money(record.netAmountPaise)}</strong>}
                         {record.customerId?.email && <span>{record.customerId.email}</span>}
                         {record.razorpayPaymentId && <span className="font-mono text-[10px]">{record.razorpayPaymentId}</span>}
+                        {kind === "professionals" && record.payoutAccount?.provider === "manual_upi" && record.payoutAccount?.upiId && (
+                          <span>UPI payee: {record.payoutAccount.accountHolderName} · {record.payoutAccount.upiId}</span>
+                        )}
+                        {kind === "professionals" && record.payoutAccount?.status && (
+                          <span>Payout details: {humanize(record.payoutAccount.status)}</span>
+                        )}
+                        {kind === "payout-accounts" && (
+                          <>
+                            <span className="font-medium">UPI ID: {record.payoutAccount?.upiId || "Not submitted"}</span>
+                            <span>Account holder: {record.payoutAccount?.accountHolderName || "Not submitted"}</span>
+                            {record.payoutAccount?.reviewReason && <span>Correction requested: {record.payoutAccount.reviewReason}</span>}
+                          </>
+                        )}
+                        {kind === "payouts" && record.provider === "manual_upi" && (
+                          <span>UPI payee: {payoutRecipient?.accountHolderName || "Name unavailable"} · {payoutRecipient?.upiId || "UPI ID unavailable"}</span>
+                        )}
+                        {kind === "payouts" && record.manualTransactionReference && (
+                          <span>Transaction reference: {record.manualTransactionReference}</span>
+                        )}
+                        {kind === "payouts" && record.manualPreparedAt && record.status === "processing" && (
+                          <span className="font-medium text-amber-600 dark:text-amber-400">Prepared; transfer outside Styler, then record the UTR.</span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-2">
-                        {kind === "professionals" && (
+                        {(kind === "professionals" || kind === "payout-accounts") && (
                           <>
-                            <Link href={`/admin/applications/${id}`} className="inline-flex items-center gap-1 rounded bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
-                              Review Profile <ArrowUpRight size={13} />
-                            </Link>
+                            {kind === "professionals" && (
+                              <Link href={`/admin/applications/${id}`} className="inline-flex items-center gap-1 rounded bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+                                Review Profile <ArrowUpRight size={13} />
+                              </Link>
+                            )}
                             {record.applicationStatus === "approved" && (
                               <Button variant="danger" loading={busy === id} onClick={() => void suspend(record)}>
                                 <AlertTriangle size={13} className="mr-1" /> Suspend
@@ -389,11 +506,24 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
                                 Reactivate
                               </Button>
                             )}
-                            {record.payoutAccount?.status !== "verified" && (
-                              <Button variant="secondary" loading={busy === id} onClick={() => void verifyPayoutAccount(record)}>
-                                Verify payout account
-                              </Button>
-                            )}
+                            {(record.payoutAccount?.status !== "verified" || kind === "payout-accounts") &&
+                              ((record.payoutAccount?.provider === "razorpay_route" && record.payoutAccount?.providerAccountId) ||
+                                (record.payoutAccount?.provider !== "razorpay_route" && record.payoutAccount?.upiId && record.payoutAccount?.accountHolderName)) && (
+                                <>
+                                  <Button variant="secondary" loading={busy === id} onClick={() => void verifyPayoutAccount(record)}>
+                                    {record.payoutAccount?.provider === "razorpay_route"
+                                      ? "Verify payout account"
+                                      : record.payoutAccount?.status === "verified"
+                                        ? "Recheck / release held payouts"
+                                        : "Verify UPI details"}
+                                  </Button>
+                                  {record.payoutAccount?.provider !== "razorpay_route" && (
+                                    <Button variant="danger" loading={busy === id} onClick={() => void rejectPayoutAccount(record)}>
+                                      Request correction
+                                    </Button>
+                                  )}
+                                </>
+                              )}
                           </>
                         )}
                         {kind === "payments" && ["captured", "partially_refunded"].includes(record.status) && (
@@ -401,9 +531,41 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
                             Request Refund
                           </Button>
                         )}
-                        {kind === "payouts" && ["pending", "failed"].includes(record.status) && (
-                          <Button loading={busy === id} onClick={() => void processPayout(record)}>
-                            <WalletCards size={13} className="mr-1" /> Process Payout
+                        {kind === "payouts" &&
+                          (
+                            (record.provider === "manual_upi" && ["pending", "failed"].includes(record.status)) ||
+                            (
+                              record.status === "on_hold" &&
+                              !record.providerTransferId &&
+                              !record.manualTransactionReference &&
+                              profile?.payoutAccount?.provider === "manual_upi" &&
+                              profile?.payoutAccount?.status === "verified" &&
+                              profile?.payoutAccount?.upiId &&
+                              profile?.payoutAccount?.accountHolderName
+                            )
+                          ) && (
+                          <Button loading={busy === id} onClick={() => void processPayout(record, "prepare")}>
+                            <WalletCards size={13} className="mr-1" /> Prepare UPI Payout
+                          </Button>
+                        )}
+                        {kind === "payouts" && record.status === "on_hold" && profile?.payoutAccount?.status === "verified" && profile?.payoutAccount?.upiId && (
+                          <Button variant="secondary" loading={busy === id} onClick={() => void processPayout(record, "release_verified_holds")}>
+                            <ShieldCheck size={13} className="mr-1" /> Release verified UPI hold
+                          </Button>
+                        )}
+                        {kind === "payouts" && record.provider === "manual_upi" && record.status === "processing" && record.manualPreparedAt && (
+                          <>
+                            <Button loading={busy === id} onClick={() => void processPayout(record, "record_transfer")}>
+                              <WalletCards size={13} className="mr-1" /> Record Transfer
+                            </Button>
+                            <Button variant="secondary" loading={busy === id} onClick={() => void processPayout(record, "cancel_preparation")}>
+                              Cancel Preparation
+                            </Button>
+                          </>
+                        )}
+                        {kind === "payouts" && record.provider === "razorpay_route" && ["pending", "failed"].includes(record.status) && (
+                          <Button loading={busy === id} onClick={() => void processPayout(record, "process_route")}>
+                            <WalletCards size={13} className="mr-1" /> Process Route Payout
                           </Button>
                         )}
                         {kind === "bookings" && (
@@ -427,7 +589,13 @@ export function AdminOperationsScreen({ kind }: { kind: AdminOperationKind }) {
             </div>
           ) : isCollection ? (
             <Card className="rounded p-8 text-center border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1f2b]">
-              <EmptyState title="No records yet" description="Once Styler has activity for this view, the records will appear here." icon={<Icon size={22} />} />
+              <EmptyState
+                title={kind === "payout-accounts" ? "No UPI details waiting for review" : "No records yet"}
+                description={kind === "payout-accounts"
+                  ? "Ask the professional to submit their account-holder name and UPI ID under Professional > Earnings. Then refresh this page."
+                  : "Once Styler has activity for this view, the records will appear here."}
+                icon={<Icon size={22} />}
+              />
             </Card>
           ) : kind === "reports" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

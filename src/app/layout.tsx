@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SITE_URL } from "@/lib/site-url";
 
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const BASE_URL = SITE_URL;
@@ -136,19 +137,18 @@ const THEME_INIT_SCRIPT = `
   try {
     var theme = localStorage.getItem("styler-theme");
 
-    if (theme !== "dark" && theme !== "light") {
-      theme =
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+    if (theme !== "dark" && theme !== "light" && theme !== "system") {
+      theme = "system";
     }
 
     var root = document.documentElement;
+    var resolvedTheme = theme === "system"
+      ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : theme;
 
-    root.dataset.theme = theme;
-    root.classList.toggle("dark", theme === "dark");
-    root.style.colorScheme = theme;
+    root.dataset.theme = resolvedTheme;
+    root.classList.toggle("dark", resolvedTheme === "dark");
+    root.style.colorScheme = resolvedTheme;
   } catch (error) {
     // Theme initialization is optional if browser storage is unavailable.
   }

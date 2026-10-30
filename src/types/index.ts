@@ -46,12 +46,13 @@ export interface AuthenticatedUser {
 export interface AddressInput {
   recipientName: string;
   phone: string;
+  houseNumber?: string;
   line1: string;
   line2?: string;
   landmark?: string;
   city: string;
   state: string;
-  postalCode: string;
+  postalCode?: string;
   country?: string;
   latitude?: number;
   longitude?: number;

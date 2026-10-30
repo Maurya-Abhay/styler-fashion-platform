@@ -141,6 +141,17 @@ export function CustomerPaymentsScreen() {
                     </p>
                   )}
 
+                  {["captured", "refund_pending", "partially_refunded", "refunded"].includes(payment.status) && (
+                    <a
+                      href={`/api/receipts/payment/${payment._id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded bg-pink-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-pink-700"
+                    >
+                      <ReceiptText size={13} /> View Receipt
+                    </a>
+                  )}
+
                   {bookingId && (
                     <div className="pt-1">
                       <Link

@@ -116,7 +116,7 @@ if (!baseUri) {
     const { refundBookingPayment } = await import("../../src/lib/payout");
     const booking = await seedBooking("cancelled");
     const payment = await seedPayment(booking);
-    await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
+    await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, provider: "razorpay_route", grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
 
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (url: any) => {
@@ -153,7 +153,7 @@ if (!baseUri) {
       payoutAccount: { provider: "razorpay_route", providerAccountId: "acc_test", status: "verified" },
     });
     assert.ok(profile.acknowledged);
-    const payout = await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
+    const payout = await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, provider: "razorpay_route", grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
     await assert.rejects(processRazorpayRoutePayout(String(payout._id)), (e: any) => e.code === "CAPTURED_PAYMENT_REQUIRED");
     assert.equal((await M.Payout.findById(payout._id).lean()).status, "pending");
   });
@@ -166,7 +166,7 @@ if (!baseUri) {
       _id: booking.professionalId, userId: oid(), applicationStatus: "approved",
       payoutAccount: { provider: "razorpay_route", providerAccountId: "acc_test2", status: "verified" },
     });
-    const payout = await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
+    const payout = await M.Payout.create({ bookingId: booking._id, professionalId: booking.professionalId, provider: "razorpay_route", grossAmountPaise: 10000, commissionPaise: 2000, amountPaise: 8000, status: "pending" });
 
     const realFetch = globalThis.fetch;
     let transferCalls = 0;
@@ -187,6 +187,159 @@ if (!baseUri) {
     const after = await M.Payout.findById(payout._id).lean();
     assert.equal(after.status, "pending", "claim must be released");
     assert.equal(after.attempts.length, 0);
+  });
+
+  test("manual UPI payouts require preparation, record a unique transfer reference, and block automatic refunds", async () => {
+    const { prepareManualUpiPayout, recordManualUpiPayout, refundBookingPayment } = await import("../../src/lib/payout");
+    const booking = await seedBooking("completed");
+    const payment = await seedPayment(booking);
+    await M.ProfessionalProfile.create({
+      _id: booking.professionalId,
+      userId: oid(),
+      applicationStatus: "approved",
+      payoutAccount: {
+        provider: "manual_upi",
+        accountHolderName: "Priya Sharma",
+        upiId: "priya@okaxis",
+        status: "verified",
+      },
+    });
+    const payout = await M.Payout.create({
+      bookingId: booking._id,
+      professionalId: booking.professionalId,
+      provider: "manual_upi",
+      payoutRecipient: { provider: "manual_upi", accountHolderName: "Priya Sharma", upiId: "priya@okaxis" },
+      grossAmountPaise: 10000,
+      commissionPaise: 2000,
+      amountPaise: 8000,
+      status: "pending",
+    });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: any) => {
+      assert.match(String(url), /\/payments\/pay_/);
+      return new Response(JSON.stringify({
+        id: payment.razorpayPaymentId,
+        entity: "payment",
+        amount: 11000,
+        currency: "INR",
+        status: "captured",
+        captured: true,
+      }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await assert.rejects(recordManualUpiPayout(String(payout._id), String(oid()), "UTR-2025-0001"), (error: any) => error.code === "PAYOUT_NOT_PREPARED");
+      await prepareManualUpiPayout(String(payout._id), String(oid()));
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    await assert.rejects(
+      refundBookingPayment({
+        bookingId: String(booking._id),
+        paymentId: String(payment._id),
+        reason: "Refund while payout is prepared",
+        requestedBy: String(oid()),
+        idempotencyKey: "manual-upi-refund-prepared",
+      }),
+      (error: any) => error.code === "PAYOUT_PROCESSING_REQUIRES_REVIEW",
+    );
+    assert.equal((await M.Payment.findById(payment._id).lean()).status, "captured");
+
+    const adminId = String(oid());
+    const transferred = await recordManualUpiPayout(String(payout._id), adminId, "UTR-2025-0001");
+    assert.equal(transferred.status, "transferred");
+    assert.equal(transferred.manualTransactionReference, "UTR-2025-0001");
+    assert.equal(transferred.manualPaidBy.toString(), adminId);
+    const ledger = await M.FinancialLedger.find({ payoutId: payout._id }).lean();
+    assert.equal(ledger.length, 2);
+    assert.ok(ledger.every((entry: any) => entry.externalReference === "UTR-2025-0001" || entry.externalReference == null));
+
+    await assert.rejects(
+      refundBookingPayment({
+        bookingId: String(booking._id),
+        paymentId: String(payment._id),
+        reason: "Customer refund request",
+        requestedBy: String(oid()),
+        idempotencyKey: "manual-upi-refund",
+      }),
+      (error: any) => error.code === "MANUAL_PAYOUT_REFUND_REQUIRES_REVIEW",
+    );
+    assert.equal((await M.Payment.findById(payment._id).lean()).status, "captured");
+  });
+
+  test("completed bookings hold manual UPI payouts until admin verification releases them", async () => {
+    const { createPayoutForCompletedBooking, releaseVerifiedPayoutHolds } = await import("../../src/lib/payout");
+    const booking = await seedBooking("completed");
+    const legacyBooking = await seedBooking("completed");
+    const missingProviderBooking = await seedBooking("completed");
+    const alreadyTransferredBooking = await seedBooking("completed");
+    await Promise.all([
+      M.Booking.updateOne({ _id: legacyBooking._id }, { $set: { professionalId: booking.professionalId } }),
+      M.Booking.updateOne({ _id: missingProviderBooking._id }, { $set: { professionalId: booking.professionalId } }),
+      M.Booking.updateOne({ _id: alreadyTransferredBooking._id }, { $set: { professionalId: booking.professionalId } }),
+    ]);
+    await M.ProfessionalProfile.create({
+      _id: booking.professionalId,
+      userId: oid(),
+      applicationStatus: "approved",
+      payoutAccount: {
+        provider: "manual_upi",
+        accountHolderName: "Asha Verma",
+        upiId: "asha@okaxis",
+        status: "pending",
+      },
+    });
+
+    const held = await createPayoutForCompletedBooking(String(booking._id));
+    assert.equal(held.provider, "manual_upi");
+    assert.equal(held.status, "on_hold");
+    const legacyHeld = await M.Payout.create({
+      bookingId: legacyBooking._id,
+      professionalId: booking.professionalId,
+      provider: "razorpay_route",
+      providerAccountId: "acc_old_route",
+      grossAmountPaise: 10000,
+      commissionPaise: 2000,
+      amountPaise: 8000,
+      status: "on_hold",
+    });
+    const providerReferencedHold = await M.Payout.create({
+      bookingId: alreadyTransferredBooking._id,
+      professionalId: booking.professionalId,
+      provider: "razorpay_route",
+      providerAccountId: "acc_old_route",
+      providerTransferId: `tr_${oid()}`,
+      grossAmountPaise: 10000,
+      commissionPaise: 2000,
+      amountPaise: 8000,
+      status: "on_hold",
+    });
+    await M.Payout.collection.insertOne({
+      bookingId: missingProviderBooking._id,
+      professionalId: booking.professionalId,
+      grossAmountPaise: 10000,
+      commissionPaise: 2000,
+      amountPaise: 8000,
+      status: "on_hold",
+    });
+
+    await M.ProfessionalProfile.updateOne(
+      { _id: booking.professionalId },
+      { $set: { "payoutAccount.status": "verified" } },
+    );
+    assert.equal(await releaseVerifiedPayoutHolds(String(booking.professionalId)), 3);
+    const released = await M.Payout.findById(held._id).lean();
+    assert.equal(released.status, "pending");
+    assert.equal(released.payoutRecipient.upiId, "asha@okaxis");
+    assert.equal(released.payoutRecipient.accountHolderName, "Asha Verma");
+    const convertedLegacy = await M.Payout.findById(legacyHeld._id).lean();
+    assert.equal(convertedLegacy.provider, "manual_upi");
+    assert.equal(convertedLegacy.status, "pending");
+    assert.equal(convertedLegacy.providerAccountId, undefined);
+    const convertedMissingProvider = await M.Payout.findOne({ bookingId: missingProviderBooking._id }).lean();
+    assert.equal(convertedMissingProvider.provider, "manual_upi");
+    assert.equal(convertedMissingProvider.status, "pending");
+    assert.equal((await M.Payout.findById(providerReferencedHold._id).lean()).status, "on_hold");
   });
 
   test("/api/services lists only approved professionals' services, paginates, and rejects bad ids", async () => {

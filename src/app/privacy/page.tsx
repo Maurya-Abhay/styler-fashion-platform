@@ -7,11 +7,11 @@ const BASE_URL = SITE_URL;
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "Styler Privacy Policy — How we handle your account information, booking data, and professional verification documents.",
+  description: "Learn what information Styler uses, how it supports accounts and bookings, and how to contact us about your data.",
   robots: { index: true, follow: true },
   openGraph: {
     title: "Privacy Policy — Styler",
-    description: "How Styler handles your account and booking information.",
+    description: "How Styler uses account, profile and booking information.",
     type: "website",
     url: `${BASE_URL}/privacy`,
   },

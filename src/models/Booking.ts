@@ -4,12 +4,13 @@ const AddressSnapshotSchema = new Schema(
   {
     recipientName: { type: String, required: true, trim: true, maxlength: 100 },
     phone: { type: String, required: true, trim: true, maxlength: 20 },
+    houseNumber: { type: String, trim: true, maxlength: 100 },
     line1: { type: String, required: true, trim: true, maxlength: 200 },
     line2: { type: String, trim: true, maxlength: 200 },
     landmark: { type: String, trim: true, maxlength: 150 },
     city: { type: String, required: true, trim: true, maxlength: 100 },
     state: { type: String, required: true, trim: true, maxlength: 100 },
-    postalCode: { type: String, required: true, trim: true, maxlength: 12 },
+    postalCode: { type: String, trim: true, maxlength: 12 },
     country: { type: String, required: true, trim: true, default: "India" },
     latitude: { type: Number, min: -90, max: 90 },
     longitude: { type: Number, min: -180, max: 180 },
@@ -54,6 +55,24 @@ const StatusHistorySchema = new Schema(
   { _id: false },
 );
 
+const ProfessionalUpdateSchema = new Schema(
+  {
+    message: { type: String, required: true, trim: true, maxlength: 300 },
+    etaMinutes: { type: Number, min: 0, max: 1440 },
+    createdAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: true },
+);
+
+const ProfessionalLocationPointSchema = new Schema(
+  {
+    latitude: { type: Number, required: true, min: -90, max: 90 },
+    longitude: { type: Number, required: true, min: -180, max: 180 },
+    sharedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 export const BookingSchema = new Schema(
   {
     bookingRequestId: { type: Schema.Types.ObjectId, ref: "BookingRequest", required: true, unique: true },
@@ -64,6 +83,7 @@ export const BookingSchema = new Schema(
     addressSnapshot: { type: AddressSnapshotSchema, required: true },
     serviceSnapshot: { type: ServiceSnapshotSchema, required: true },
     priceSnapshot: { type: PriceSnapshotSchema, required: true },
+    paymentPreference: { type: String, enum: ["when_accepted", "later"], default: "when_accepted" },
     startAt: { type: Date, required: true, index: true },
     endAt: { type: Date, required: true },
     status: {
@@ -83,13 +103,23 @@ export const BookingSchema = new Schema(
     // Immutable policy outcome snapshot, so a failed external refund can be retried
     // after cancellation without re-evaluating rules that may have changed later.
     refundRequired: { type: Boolean, default: false },
+    refundReviewRequired: { type: Boolean, default: false },
     statusHistory: { type: [StatusHistorySchema], default: [] },
+    professionalUpdates: { type: [ProfessionalUpdateSchema], default: [] },
+    professionalLiveLocation: {
+      latitude: { type: Number, min: -90, max: 90 },
+      longitude: { type: Number, min: -180, max: 180 },
+      sharedAt: { type: Date },
+    },
+    professionalLocationStartedAt: { type: Date },
+    professionalLocationHistory: { type: [ProfessionalLocationPointSchema], default: [] },
     reviewId: { type: Schema.Types.ObjectId, ref: "Review", default: null },
   },
   { timestamps: true, collection: "bookings" },
 );
 
 BookingSchema.index({ customerId: 1, createdAt: -1 });
+BookingSchema.index({ createdAt: -1 });
 BookingSchema.index({ professionalId: 1, status: 1, startAt: 1 });
 BookingSchema.index({ status: 1, paymentDueAt: 1 });
 BookingSchema.pre("validate", function (this: any, next) {

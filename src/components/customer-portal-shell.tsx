@@ -93,15 +93,31 @@ export function CustomerPortalShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    apiRequest<any>("/api/notifications?limit=1&unreadOnly=true")
-      .then((result) => {
+    let loadingCount = false;
+    const refreshCount = async () => {
+      if (document.hidden || loadingCount) return;
+      loadingCount = true;
+      try {
+        const result = await apiRequest<any>("/api/notifications?limit=1&unreadOnly=true");
         if (active) setUnreadCount(Number(result?.total) || 0);
-      })
-      .catch(() => {
+      } catch {
         if (active) setUnreadCount(0);
-      });
+      } finally {
+        loadingCount = false;
+      }
+    };
+    void refreshCount();
+    const timer = window.setInterval(() => void refreshCount(), 15_000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void refreshCount();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onVisibilityChange);
     return () => {
       active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onVisibilityChange);
     };
   }, [pathname]);
 
@@ -153,7 +169,7 @@ export function CustomerPortalShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-styler-line bg-styler-surface lg:flex">
         <div className="px-6 pb-4 pt-6"><Logo /></div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3" aria-label="Customer navigation">
+        <nav className="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 pb-3" aria-label="Customer navigation">
           {navigation.map(({ href, label, icon: Icon }) => {
             const active = href === activeHref;
             return (
@@ -214,7 +230,7 @@ export function CustomerPortalShell({ children }: { children: ReactNode }) {
                 <X size={20} />
               </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto px-3 pt-3 pb-3" aria-label="Mobile navigation">
+            <nav className="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 pt-3 pb-3" aria-label="Mobile navigation">
               {navigation.map(({ href, label, icon: Icon }) => {
                 const active = href === activeHref;
                 return (
@@ -324,7 +340,7 @@ export function CustomerPortalShell({ children }: { children: ReactNode }) {
           </div>
 
           {/* Mobile / tablet: quick scrollable link pills bar */}
-          <nav className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label="Customer quick navigation">
+          <nav className="no-scrollbar thin-scrollbar flex gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:hidden" aria-label="Customer quick navigation">
             {navigation.map(({ href, label, icon: Icon }) => {
               const active = href === activeHref;
               return (

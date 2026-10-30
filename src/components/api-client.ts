@@ -8,6 +8,20 @@ export async function apiRequest<T=any>(path:string, init:RequestInit={}) : Prom
     let message=payload.error?.message || `Request failed (${response.status}).`;
     const details=payload.error?.details;
     if (details && typeof details === "object" && "missing" in details && Array.isArray((details as any).missing)) message += ` Missing: ${(details as any).missing.join(", ")}.`;
+    if (payload.error?.code === "VALIDATION_ERROR" && Array.isArray(details)) {
+      const issues = details
+        .map((issue: any) => {
+          const field = Array.isArray(issue.path) && issue.path.length ? `${issue.path.join(".")}: ` : "";
+          return typeof issue.message === "string" ? `${field}${issue.message}` : "";
+        })
+        .filter(Boolean);
+      if (issues.length) message += ` ${issues.join(" ")}`;
+    } else if (payload.error?.code === "VALIDATION_ERROR" && details && typeof details === "object") {
+      const issues = Object.entries(details)
+        .map(([field, issue]) => `${field}: ${String(issue)}`)
+        .join(" ");
+      if (issues) message += ` ${issues}`;
+    }
     throw new Error(message);
   }
   return (payload && Object.prototype.hasOwnProperty.call(payload,"data") ? payload.data : payload) as T;

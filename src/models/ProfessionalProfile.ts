@@ -1,4 +1,4 @@
-import { Schema, model, models, InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, models, InferSchemaType } from "mongoose";
 import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
 
 const PortfolioImageSchema = new Schema(
@@ -43,10 +43,13 @@ const ServiceAreaSchema = new Schema(
 
 const PayoutAccountSchema = new Schema(
   {
-    provider: { type: String, enum: ["razorpay_route"], default: "razorpay_route" },
+    provider: { type: String, enum: ["manual_upi", "razorpay_route"], default: "manual_upi" },
+    accountHolderName: { type: String, trim: true, maxlength: 120 },
+    upiId: { type: String, trim: true, lowercase: true, maxlength: 256 },
     providerAccountId: { type: String, trim: true, maxlength: 200 },
     status: { type: String, enum: ["not_started", "pending", "verified", "restricted", "rejected"], default: "not_started" },
     verifiedAt: { type: Date },
+    reviewReason: { type: String, trim: true, maxlength: 500 },
   },
   { _id: false },
 );
@@ -96,5 +99,19 @@ ProfessionalProfileSchema.index({ city: 1, applicationStatus: 1 });
 ProfessionalProfileSchema.index({ categories: 1, applicationStatus: 1 });
 
 export type ProfessionalProfileDocumentShape = InferSchemaType<typeof ProfessionalProfileSchema>;
+
+const cachedProfessionalProfileModel = models.ProfessionalProfile as any;
+const cachedPayoutAccountSchema = cachedProfessionalProfileModel?.schema.path("payoutAccount")?.schema;
+if (
+  process.env.NODE_ENV !== "production" &&
+  cachedProfessionalProfileModel &&
+  (
+    !cachedPayoutAccountSchema?.path("provider")?.enumValues.includes("manual_upi") ||
+    !cachedPayoutAccountSchema?.path("upiId")
+  )
+) {
+  mongoose.deleteModel("ProfessionalProfile");
+}
+
 const ProfessionalProfile: any = models.ProfessionalProfile || model("ProfessionalProfile", ProfessionalProfileSchema);
 export default ProfessionalProfile;

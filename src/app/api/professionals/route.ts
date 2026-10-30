@@ -8,10 +8,24 @@ export const GET = withApi(async (request) => {
   const filter: Record<string, any> = { applicationStatus: "approved" };
   const city = url.searchParams.get("city")?.trim().slice(0, 100); const state = url.searchParams.get("state")?.trim().slice(0, 100);
   const category = url.searchParams.get("category")?.trim(); const q = url.searchParams.get("q")?.trim().slice(0, 100);
-  if (city) filter.city = new RegExp(`^${safeRegexText(city)}$`, "i");
+  if (city) filter.city = new RegExp(safeRegexText(city), "i");
   if (state) filter.state = new RegExp(`^${safeRegexText(state)}$`, "i");
   if (category) filter.categories = category;
-  if (q) filter.$or = [{ displayName: new RegExp(safeRegexText(q), "i") }, { bio: new RegExp(safeRegexText(q), "i") }, { city: new RegExp(safeRegexText(q), "i") }];
+  if (q) {
+    const searchPattern = new RegExp(safeRegexText(q), "i");
+    const categoryPattern = new RegExp(safeRegexText(q.replace(/\s+/g, "_")), "i");
+    const matchingServiceIds = await Service.distinct("professionalId", {
+      isActive: true,
+      $or: [{ title: searchPattern }, { category: categoryPattern }],
+    });
+    filter.$or = [
+      { displayName: searchPattern },
+      { bio: searchPattern },
+      { city: searchPattern },
+      { categories: categoryPattern },
+      ...(matchingServiceIds.length ? [{ _id: { $in: matchingServiceIds } }] : []),
+    ];
+  }
   const [profiles, total] = await Promise.all([
     ProfessionalProfile.find(filter).select("slug displayName bio profilePhoto portfolioImages experienceYears categories city state serviceAreas applicationStatus createdAt userId").populate({ path: "userId", select: "name profileImageUrl" }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     ProfessionalProfile.countDocuments(filter),

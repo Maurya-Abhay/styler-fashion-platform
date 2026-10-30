@@ -63,6 +63,7 @@ PaymentSchema.index(
   },
 );
 PaymentSchema.index({ bookingId: 1, createdAt: -1 });
+PaymentSchema.index({ customerId: 1, status: 1, capturedAt: -1 });
 PaymentSchema.index({ status: 1, createdAt: -1 });
 PaymentSchema.index({ "refunds.razorpayRefundId": 1 }, { sparse: true });
 PaymentSchema.index({ "refunds.idempotencyKey": 1 }, { unique: true, sparse: true });

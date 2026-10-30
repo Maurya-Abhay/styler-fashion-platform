@@ -90,11 +90,12 @@ Admin: `/admin/dashboard`, `/admin/applications`, `/admin/applications/[id]`, `/
 ## Core workflow
 
 1. Customer or professional registers with name, unique email, unique phone, password and confirmation. Only email is verified in V1 using a 6-digit OTP. Phone verification and phone-number login are intentionally deferred.
-2. Professional completes profile, portfolio, required documents, at least one service, and weekly availability, then submits the application. Pending/rejected/incomplete profiles are not eligible for matching.
-3. Customer submits a supported service category, details, budget, preferred time window and an address snapshot. Optional GPS coordinates allow matching inside the selected search radius; without coordinates, matching uses the entered service area. Matching sends up to 10 offers to eligible professionals.
-4. An atomic/transaction-backed accept flow ensures only one professional can win. A payment hold is created and the customer is prompted to pay.
+2. Professional completes profile, pins a service location using GPS or the map, adds a portfolio and required verification documents, at least one service, and weekly availability, then submits the application for admin review. Only approved professionals who are accepting requests are eligible for matching.
+3. Customer submits a supported service category, details, budget, preferred time window and an address snapshot. If the customer address has GPS coordinates, only professionals with a service pin inside the selected radius are matched; requests without customer coordinates use the entered city/service area. Matching sends up to 10 offers to eligible professionals.
+4. A matched professional gets an in-workspace offer alert (and configured email/web-push delivery), with approximate distance and request details. Accepting opens the booking chat; after payment confirms the booking, the professional can explicitly start device-only GPS navigation to the customer's saved pin or open driving directions in Maps. An atomic/transaction-backed accept flow ensures only one professional can win.
 5. The booking is confirmed only after server-side Razorpay verification/webhook reconciliation. Service completion, reviews and payout bookkeeping follow the configured policy.
-6. Admin controls default and per-professional commission, customer fees, offer/payment timeout policy, approvals and refund/payout workflows.
+6. Customers pay Styler through Razorpay. After completion, Styler holds the professional's share until the admin verifies their UPI details, then an admin makes the transfer from Styler's business account outside the app and records its UTR/reference. Professionals do not need a Razorpay account for this manual payout flow.
+7. Admin controls default and per-professional commission, customer fees, offer/payment timeout policy, approvals and refund/payout workflows. Refunds after an external manual payout require admin reconciliation because Styler cannot reverse that transfer automatically.
 
 The portals refresh active requests/offers periodically; this is near-real-time polling, not an instantaneous push connection. Instant updates require deployment-specific realtime infrastructure and credentials.
 
@@ -114,7 +115,7 @@ This source package is not a substitute for a launch review. Before production:
 2. Use sandbox/test credentials and test signup/OTP, session expiry, duplicate email/phone, professional approval, two concurrent offer accepts, slot conflicts, payment failure, duplicate webhooks, refund and cancellation paths.
 3. Configure a scheduler that invokes protected offer-expiry, payment-hold, matching-retry, notification-delivery and payout-reconciliation endpoints at the cadence in `vercel.json`. Do not rely on an in-memory timer in a serverless function; the one-minute offer/payment/notification schedule requires a host plan that supports per-minute cron jobs or an authenticated external scheduler.
 4. Use HTTPS, secure MongoDB network rules, backup/restore and secret rotation.
-5. Confirm Razorpay Route eligibility and linked-account onboarding before enabling automated professional transfers. Payment collection and marketplace payouts are separate capabilities.
+5. Test customer payment collection separately from professional payouts. New professional payouts use verified UPI details and require an admin to transfer funds externally and record the UTR; payouts already configured for Razorpay Route remain supported.
 6. Confirm ImageKit private-file storage is enabled for verification documents. Admin document review URLs are short-lived. Restrict upload scopes and review file-storage access before accepting real identity documents.
 7. Configure email sender/domain records, VAPID keys for Web Push, privacy/retention policy, customer cancellation/refund policy, support contact and applicable tax/legal disclosures.
 8. Ensure hosting cron limits support the selected cadence or use an authenticated external scheduler.

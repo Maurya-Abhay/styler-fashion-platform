@@ -10,6 +10,12 @@ export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 export const phoneSchema = z.string().trim().transform((value) => value.replace(/[\s()-]/g, "")).pipe(z.string().regex(/^\+[1-9]\d{7,14}$/, "Use international phone format, e.g. +919876543210."));
 export const passwordSchema = z.string().min(8).max(128).refine((value) => !/\s/.test(value), "Password must not contain spaces.");
 export const otpSchema = z.string().regex(/^\d{6}$/, "Enter the six-digit code.");
+export const upiIdSchema = z.string().trim().toLowerCase()
+  .regex(/^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/, "Enter a valid UPI ID, for example name@bank");
+export const professionalPayoutAccountSchema = z.object({
+  accountHolderName: z.string().trim().min(2).max(120),
+  upiId: upiIdSchema,
+});
 
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -26,30 +32,42 @@ export const resendOtpSchema = z.object({ email: emailSchema });
 export const resetPasswordSchema = z.object({ email: emailSchema, otp: otpSchema, newPassword: passwordSchema, confirmPassword: z.string() })
   .refine((value) => value.newPassword === value.confirmPassword, { path: ["confirmPassword"], message: "Passwords do not match." });
 
-export const addressSchema = z.object({
+const addressFieldsSchema = z.object({
   recipientName: z.string().trim().min(2).max(100),
   phone: phoneSchema,
+  houseNumber: z.string().trim().max(100).optional(),
   line1: z.string().trim().min(3).max(200),
   line2: z.string().trim().max(200).optional(),
   landmark: z.string().trim().max(150).optional(),
   city: z.string().trim().min(2).max(100),
   state: z.string().trim().min(2).max(100),
-  postalCode: z.string().trim().min(4).max(12),
   country: z.string().trim().max(100).default("India"),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
-}).refine(
-  (value) => (value.latitude === undefined) === (value.longitude === undefined),
-  { path: ["latitude"], message: "Both coordinates are required for location-based matching." },
-);
+});
+
+const hasCoordinatePair = (value: { latitude?: number; longitude?: number }) =>
+  (value.latitude === undefined) === (value.longitude === undefined);
+const coordinatePairError = {
+  path: ["latitude"],
+  message: "Both coordinates are required for location-based matching.",
+};
+
+export const addressSchema = addressFieldsSchema.extend({
+  postalCode: z.string().trim().min(4).max(12),
+}).refine(hasCoordinatePair, coordinatePairError);
+export const savedAddressSchema = addressFieldsSchema.extend({
+  postalCode: z.string().trim().min(4).max(12).optional(),
+}).refine(hasCoordinatePair, coordinatePairError);
 
 export const serviceCategorySchema = z.enum(SERVICE_CATEGORY_IDS);
 export const bookingRequestSchema = z.object({
   serviceCategory: serviceCategorySchema,
   requirements: z.string().trim().min(10).max(4000),
   referenceImages: z.array(z.object({ fileId: z.string().max(300).optional(), url: httpUrlSchema, caption: z.string().max(200).optional() })).max(10).default([]),
-  addressSnapshot: addressSchema,
+  addressSnapshot: savedAddressSchema,
   searchRadiusKm: z.number().int().min(1).max(200).default(25),
+  paymentPreference: z.enum(["when_accepted", "later"]).default("when_accepted"),
   budgetMinPaise: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   budgetMaxPaise: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   preferredStartAt: z.coerce.date(),

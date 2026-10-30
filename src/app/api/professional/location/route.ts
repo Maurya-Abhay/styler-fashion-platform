@@ -6,9 +6,9 @@ import { AppError } from "@/types";
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  city: z.string().trim().min(2).max(100),
-  state: z.string().trim().min(2).max(100),
-  postalCode: z.string().trim().min(4).max(12),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(100).optional(),
+  postalCode: z.string().trim().max(12).optional(),
 });
 
 export const PATCH = withApi(async (request) => {
@@ -26,9 +26,9 @@ export const PATCH = withApi(async (request) => {
     latitude: location.latitude,
     longitude: location.longitude,
   };
-  profile.city = location.city;
-  profile.state = location.state;
-  profile.postalCode = location.postalCode;
+  if (location.city !== undefined) profile.city = location.city;
+  if (location.state !== undefined) profile.state = location.state;
+  if (location.postalCode !== undefined) profile.postalCode = location.postalCode;
   await profile.save();
 
   return {

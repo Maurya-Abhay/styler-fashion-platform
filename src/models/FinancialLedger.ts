@@ -33,6 +33,7 @@ export const FinancialLedgerSchema = new Schema(
 
 FinancialLedgerSchema.index({ transactionGroupId: 1, createdAt: 1 });
 FinancialLedgerSchema.index({ accountCode: 1, occurredAt: -1 });
+FinancialLedgerSchema.index({ accountCode: 1, entrySide: 1, entryType: 1, createdAt: -1 });
 FinancialLedgerSchema.index({ bookingId: 1, occurredAt: -1 });
 
 export type FinancialLedgerDocumentShape = InferSchemaType<typeof FinancialLedgerSchema>;

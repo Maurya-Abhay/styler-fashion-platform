@@ -2,53 +2,111 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  LockKeyhole,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { PageHeading } from "@/components/ui";
 
 type LegalKind = "terms" | "privacy" | "about";
 
-const content = {
+type LegalSection = {
+  title: string;
+  text: string;
+  points?: string[];
+};
+
+const content: Record<Exclude<LegalKind, "about">, LegalSection[]> = {
   privacy: [
     {
-      title: "Information we use",
-      text: "Styler uses account information, contact details, service requests, addresses, booking records and payment status to operate the marketplace. Payment card and bank credentials should be handled by the payment provider and must not be stored in the Styler application database.",
+      title: "Information you provide",
+      text: "The information we use depends on how you use Styler. You may provide:",
+      points: [
+        "Account details such as your name, email address, phone number and login credentials.",
+        "Profile information, service listings, photos, preferences and messages you choose to share.",
+        "Booking requests, requirements, service addresses, appointment details and support enquiries.",
+        "For professional applications, identity, address and other documents submitted for review.",
+      ],
     },
     {
-      title: "Professional verification",
-      text: "Professionals may provide identity and address documents for approval. These documents must be stored privately, accessed only by authorized reviewers and retained only as long as the platform needs them under its documented policy.",
+      title: "How we use information",
+      text: "Styler uses information to operate and improve the marketplace, including to:",
+      points: [
+        "Create and secure accounts, verify email addresses and help prevent misuse.",
+        "Match booking requests with relevant professionals and share the details needed to respond.",
+        "Coordinate bookings, payments, refunds, customer support and important service updates.",
+        "Review professional applications, manage disputes and meet applicable legal obligations.",
+      ],
     },
     {
-      title: "Third-party providers",
-      text: "Styler may use transactional email, image storage and payment service providers to deliver core functionality. Configure these services with appropriate access restrictions and review their terms before launch.",
+      title: "When information is shared",
+      text: "We share only information needed to provide the service, for example:",
+      points: [
+        "Relevant request and contact details are shared with professionals who can respond to your booking.",
+        "Payment, email, image-storage and hosting providers process information needed for their services.",
+        "Information may be disclosed when required by law or needed to protect users and the platform.",
+      ],
     },
     {
-      title: "Account and data requests",
-      text: "To request assistance with account information, contact the Styler support team using the verified support address configured for your business.",
+      title: "Payments and transaction records",
+      text: "Payments are handled through the payment provider shown during checkout. Styler may keep transaction references, payment status, amounts and related booking records to support receipts, reconciliation, refunds and customer support. Do not send full card details, passwords or bank credentials in a support message.",
+    },
+    {
+      title: "Storage, security and retention",
+      text: "We use access controls and other safeguards intended to protect information. No online service can promise absolute security. Information is kept for as long as needed to provide the service, meet legal and accounting requirements, resolve disputes and enforce platform rules. Retention may differ by information type and legal obligations.",
+    },
+    {
+      title: "Your choices and requests",
+      text: "You can update profile information in your account where those controls are available. To ask about accessing, correcting or deleting account information, contact Styler through the contact page. We may need to verify your identity and may retain some records where law or legitimate operational needs require it.",
+    },
+    {
+      title: "Policy updates and contact",
+      text: "We may update this policy as the service changes. The current version will be published on this page. If you have a privacy question or request, contact the Styler team.",
     },
   ],
   terms: [
     {
-      title: "Bookings and availability",
-      text: "Professional offers are sent based on service category, service area and availability. A request is not a confirmed booking until a professional accepts and payment is captured.",
+      title: "What Styler provides",
+      text: "Styler is an online marketplace that helps customers discover fashion professionals, review services and submit booking requests. Professionals provide the services; Styler is not the tailor, designer or stylist performing the work.",
     },
     {
-      title: "Professional obligations",
-      text: "Professionals must maintain accurate service listings, honor accepted bookings, and communicate changes promptly. Quality disputes are resolved through Styler's review process.",
+      title: "Accounts and eligibility",
+      text: "Keep your account details accurate and protect your sign-in credentials. You are responsible for activity carried out through your account. Contact Styler promptly if you believe someone has accessed it without permission. We may restrict accounts where needed to protect users or the platform.",
     },
     {
-      title: "Customer obligations",
-      text: "Customers must provide accurate requirements, be available at the agreed time and location, and pay the agreed amount. Late cancellations may incur fees per the professional's policy.",
+      title: "Requests, offers and confirmed bookings",
+      text: "Customers should provide accurate service requirements, location and preferred timing. Professionals may respond based on their services and availability. A request or offer is not itself a confirmed appointment: follow the booking flow and any required payment steps shown in Styler to confirm it. Check the final booking details before proceeding.",
     },
     {
-      title: "Payments and refunds",
-      text: "Payments are processed through Styler's payment partner. Refunds follow the professional's cancellation policy and Styler's buyer protection terms.",
+      title: "Pricing, payment and receipts",
+      text: "Review the service price, any applicable fees and the total payable amount shown before payment. Payments are processed by the payment provider presented in the booking flow. Payment confirmation, settlement and refunds can take time to appear in bank or provider records. Styler may provide booking and payment records or receipts for completed transactions.",
     },
     {
-      title: "Limitation of liability",
-      text: "Styler is a marketplace facilitator, not a party to service contracts. We do not guarantee specific outcomes, timelines or quality beyond our verification and review processes.",
+      title: "Changes, cancellations and refunds",
+      text: "Cancellation eligibility, charges and refund handling follow the rules shown for the booking when it is made, together with applicable law and payment-provider processing. Check those details before confirming. A refund request or initiation does not mean funds have already reached your account.",
+    },
+    {
+      title: "Customer and professional responsibilities",
+      text: "Customers should attend at the agreed time and location, provide accurate information and communicate changes promptly. Professionals should keep profiles, service descriptions, prices and availability accurate, and deliver accepted work with reasonable care and respectful conduct.",
+    },
+    {
+      title: "Messages, photos and other content",
+      text: "Only share content you have permission to use. Do not post unlawful, misleading, abusive or private information that does not belong to you. You remain responsible for content you submit and allow Styler to use it as needed to operate, display and support the service.",
+    },
+    {
+      title: "Platform availability and account action",
+      text: "We work to keep Styler available and reliable, but features may change or be temporarily unavailable. Styler may investigate reports, remove content or limit access when reasonably needed to enforce these terms, comply with law or protect users.",
+    },
+    {
+      title: "Questions and updates",
+      text: "These terms may be updated as Styler changes. The current version will be published here. If you have a question about a booking or these terms, contact the Styler team.",
     },
   ],
 };
@@ -56,12 +114,13 @@ const content = {
 export function LegalPageClient({ kind }: { kind: LegalKind }) {
   const isAbout = kind === "about";
   const isPrivacy = kind === "privacy";
+  const sections = isAbout ? [] : content[kind];
 
   const title = isAbout
     ? "Fashion, made personal."
     : isPrivacy
-    ? "Privacy overview"
-    : "Terms of use";
+    ? "Your privacy matters."
+    : "Clear terms. Better experiences.";
 
   return (
     <div className="flex min-h-screen flex-col bg-styler-canvas text-styler-ink">
@@ -159,53 +218,149 @@ export function LegalPageClient({ kind }: { kind: LegalKind }) {
             </section>
           </>
         ) : (
-          <div className="mx-auto max-w-3xl">
-            <PageHeading
-              title={title}
-              description={
-                isPrivacy
-                  ? "An overview of how Styler handles account and booking information."
-                  : "The conditions and responsibilities involved in using Styler."
-              }
-            />
+          <div className="mx-auto max-w-7xl">
+            <header className="max-w-3xl">
+              <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-styler-accent">
+                {isPrivacy ? <LockKeyhole size={15} /> : <FileText size={15} />}
+                Styler information
+              </p>
+              <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+                {title}
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-styler-ink-soft sm:text-base">
+                {isPrivacy
+                  ? "A straightforward guide to the information involved when you use Styler, how it supports your bookings, and how to contact us about your data."
+                  : "The practical guidelines for using Styler, requesting services, managing bookings and working with other members of the marketplace."}
+              </p>
+            </header>
 
-            <p className="mt-8 border-l-2 border-styler-accent bg-styler-surface-2 px-4 py-4 text-sm leading-6 text-styler-ink-soft">
-              This page is a launch draft, not final legal advice. Have these
-              policies reviewed for your business and applicable Indian law
-              before publishing.
-            </p>
+            <div className="mt-8 grid items-start gap-6 lg:mt-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-10">
+              <aside className="border border-styler-line bg-styler-surface p-5 sm:p-6 lg:sticky lg:top-24">
+                <details className="group lg:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                    On this page
+                    <ChevronDown size={17} className="text-styler-muted transition-transform group-open:rotate-180" />
+                  </summary>
+                  <nav aria-label={`${isPrivacy ? "Privacy policy" : "Terms"} sections`} className="mt-3 border-t border-styler-line pt-3">
+                    <ol className="grid gap-1 sm:grid-cols-2">
+                      {sections.map((section, index) => {
+                        const id = `section-${index + 1}`;
+                        return (
+                          <li key={section.title}>
+                            <a
+                              href={`#${id}`}
+                              className="flex items-start gap-2.5 px-2 py-2 text-sm leading-5 text-styler-ink-soft transition-colors hover:bg-styler-surface-2 hover:text-styler-accent"
+                            >
+                              <span className="mt-0.5 text-[10px] font-semibold tabular-nums text-styler-accent">
+                                {String(index + 1).padStart(2, "0")}
+                              </span>
+                              {section.title}
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </nav>
+                </details>
+                <div className="hidden lg:block">
+                  <h2 className="text-sm font-semibold">On this page</h2>
+                  <nav aria-label={`${isPrivacy ? "Privacy policy" : "Terms"} sections`} className="mt-4">
+                    <ol className="space-y-1">
+                    {sections.map((section, index) => {
+                      const id = `section-${index + 1}`;
+                      return (
+                        <li key={section.title}>
+                          <a
+                            href={`#${id}`}
+                            className="flex items-start gap-2.5 px-2 py-2 text-sm leading-5 text-styler-ink-soft transition-colors hover:bg-styler-surface-2 hover:text-styler-accent"
+                          >
+                            <span className="mt-0.5 text-[10px] font-semibold tabular-nums text-styler-accent">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
+                            {section.title}
+                          </a>
+                        </li>
+                      );
+                    })}
+                    </ol>
+                  </nav>
+                  <div className="mt-5 border-t border-styler-line pt-4">
+                    <Link
+                      href="/contact"
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-styler-accent hover:underline"
+                    >
+                      Ask us a question
+                      <ArrowRight size={15} />
+                    </Link>
+                  </div>
+                </div>
+              </aside>
 
-            <div className="mt-10 divide-y divide-styler-line border-t border-styler-line">
-              {content[kind].map((section, index) => (
-                <section
-                  key={section.title}
-                  className="grid gap-3 py-7 sm:grid-cols-[52px_1fr] sm:gap-5 sm:py-8"
-                >
-                  <span className="font-serif text-lg text-styler-accent">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-
-                  <div>
-                    <h2 className="font-serif text-xl font-normal sm:text-2xl">
-                      {section.title}
-                    </h2>
-                    <p className="mt-3 text-sm leading-7 text-styler-ink-soft">
-                      {section.text}
+              <div className="min-w-0">
+                <div className="border border-styler-warning/30 bg-styler-warning-bg p-4 sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck size={19} className="mt-0.5 shrink-0 text-styler-warning" />
+                    <p className="text-sm leading-6 text-styler-warning">
+                      This is a plain-language product summary, not legal advice. Have the final policies reviewed for your business and applicable Indian law before relying on them.
                     </p>
                   </div>
-                </section>
-              ))}
-            </div>
+                </div>
 
-            <div className="mt-8 border-t border-styler-line pt-6 text-sm text-styler-ink-soft">
-              Questions?{" "}
-              <Link
-                href="/contact"
-                className="font-semibold text-styler-accent hover:underline"
-              >
-                Contact the Styler team
-              </Link>
-              .
+                <div className="mt-5 space-y-3">
+                  {sections.map((section, index) => (
+                    <section
+                      key={section.title}
+                      id={`section-${index + 1}`}
+                      className="scroll-mt-24 border border-styler-line bg-styler-surface p-5 sm:p-7"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center bg-styler-accent-soft text-xs font-bold tabular-nums text-styler-accent">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0">
+                          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+                            {section.title}
+                          </h2>
+                          <p className="mt-2 text-sm leading-7 text-styler-ink-soft">
+                            {section.text}
+                          </p>
+                          {section.points && (
+                            <ul className="mt-4 space-y-3">
+                              {section.points.map((point) => (
+                                <li key={point} className="flex items-start gap-2.5 text-sm leading-6 text-styler-ink-soft">
+                                  <CheckCircle2 size={16} className="mt-1 shrink-0 text-styler-accent" />
+                                  <span>{point}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                <section className="mt-5 flex flex-col gap-4 border border-styler-line bg-styler-accent-soft/50 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.15em] text-styler-accent">
+                      Need a hand?
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold">
+                      We&apos;re here to help.
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-styler-ink-soft">
+                      Get in touch with the Styler team about this page or your account.
+                    </p>
+                  </div>
+                  <Link
+                    href="/contact"
+                    className="inline-flex shrink-0 items-center justify-center gap-2 bg-styler-accent px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-styler-accent-strong"
+                  >
+                    Contact Styler
+                    <ArrowRight size={16} />
+                  </Link>
+                </section>
+              </div>
             </div>
           </div>
         )}
