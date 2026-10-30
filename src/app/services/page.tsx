@@ -19,6 +19,7 @@ import {
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CATEGORIES, FEATURED_GROUPS } from "@/lib/categories";
+import { listPublicServices } from "@/lib/public-services";
 
 export const metadata: Metadata = {
   title: "Services | Styler",
@@ -65,19 +66,6 @@ type Params = Promise<{
   q?: string | string[];
 }>;
 
-const configuredBaseUrl = [
-  process.env.NEXT_PUBLIC_APP_URL,
-  process.env.APP_URL,
-].map((value) => value?.trim())
-  .find((value) => {
-    if (!value) return false;
-    try {
-      return ["http:", "https:"].includes(new URL(value).protocol);
-    } catch {
-      return false;
-    }
-  });
-
 const PHOTOS = [
   "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1000&q=85",
   "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=1000&q=85",
@@ -108,51 +96,11 @@ function labelCategory(category: RawService["category"]) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function extractServices(payload: unknown): RawService[] {
-  if (Array.isArray(payload)) return payload as RawService[];
-  if (!payload || typeof payload !== "object") return [];
-
-  const r = payload as Record<string, unknown>;
-  const nested = r.data && typeof r.data === "object" && !Array.isArray(r.data)
-    ? r.data as Record<string, unknown>
-    : undefined;
-
-  const list = [
-    r.items, r.services, r.data,
-    nested?.items, nested?.services, nested?.results,
-  ].find(Array.isArray);
-
-  return list ? list as RawService[] : [];
-}
-
 async function loadServices(): Promise<{ items: RawService[]; error?: string }> {
   try {
-    const baseUrl = (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
-      configuredBaseUrl ||
-      (process.env.NODE_ENV === "development" ? "http://localhost:3000" : undefined);
-
-    if (!baseUrl) {
-      throw new Error("Unable to determine the application origin for service listings.");
-    }
-
-    const url = new URL("/api/services", baseUrl);
-    url.searchParams.set("limit", "100");
-
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      console.error("Failed to load public services.", {
-        status: response.status,
-        url: url.pathname,
-      });
-      return {
-        items: [],
-        error: "Service listings are temporarily unavailable. Please try again shortly.",
-      };
-    }
-
-    const payload: unknown = await response.json();
+    const result = await listPublicServices({ limit: 100 });
     return {
-      items: extractServices(payload).filter((s) => s.isActive !== false),
+      items: result.items as RawService[],
     };
   } catch (error) {
     console.error("Failed to load public services.", error);

@@ -6,13 +6,14 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
+  BadgeCheck,
   Clock3,
   MapPin,
   Search,
   Sparkles,
 } from "lucide-react";
 import { apiRequest, humanize, money, unwrapItems } from "@/components/api-client";
-import { Alert, EmptyState, LoadingBlock } from "@/components/ui";
+import { Alert, LoadingBlock } from "@/components/ui";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -46,6 +47,7 @@ export function ServiceCategoryPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const isPersonalStyling = category === "personal_styling";
 
   useEffect(() => {
     let active = true;
@@ -87,111 +89,118 @@ export function ServiceCategoryPage({
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
           href="/services"
-          className="inline-flex items-center gap-2 text-sm text-styler-muted hover:text-styler-accent"
+          className="inline-flex items-center gap-2 text-sm font-medium text-styler-muted transition hover:text-styler-accent"
         >
           <ArrowLeft size={16} /> All services
         </Link>
 
-        {/* Premium hero */}
-        <section className="relative isolate mt-6 overflow-hidden rounded-3xl bg-[#35102f] shadow-soft">
-          <picture>
-            <source
-              media="(max-width: 640px)"
-              srcSet="/images/hero-mobile.webp"
-            />
-            <img
-              src={FALLBACK_IMAGE}
-              alt="Indian occasion wear and fashion design"
-              fetchPriority="high"
-              className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-            />
-          </picture>
-          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#240b21]/95 via-[#35102f]/80 to-[#35102f]/30" />
-
-          <div className="max-w-2xl px-6 py-12 text-white sm:px-10 sm:py-16">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-pink-200">
-              <Sparkles size={14} /> Styler Collection
+        <section className="relative mt-5 grid overflow-hidden border border-styler-line bg-[#35102f] shadow-soft md:min-h-[360px] md:grid-cols-[1.05fr_.95fr] lg:min-h-[390px]">
+          <div className="relative z-10 flex flex-col justify-center px-6 py-10 text-white sm:px-10 sm:py-12 lg:px-12">
+            <span className="inline-flex w-fit items-center gap-2 border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-100">
+              <Sparkles size={14} /> Styler services
             </span>
 
-            <h1 className="mt-5 text-3xl font-bold leading-tight sm:text-5xl">
-              Discover your perfect{" "}
-              <span className="font-serif italic text-pink-300">
-                {humanize(category).toLowerCase()}.
-              </span>
+            <h1 className="mt-6 max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-[46px]">
+              {isPersonalStyling ? (
+                <>
+                  Find a style that feels{" "}
+                  <span className="font-serif italic text-pink-200">like you.</span>
+                </>
+              ) : (
+                <>
+                  Find your perfect{" "}
+                  <span className="font-serif italic text-pink-200">
+                    {humanize(category).toLowerCase()}.
+                  </span>
+                </>
+              )}
             </h1>
 
-            <p className="mt-4 max-w-lg text-sm leading-7 text-white/80 sm:text-base">
-              Explore approved professionals, compare services and find the
-              right person for your needs.
+            <p className="mt-4 max-w-lg text-sm leading-7 text-white/75 sm:text-base">
+              {isPersonalStyling
+                ? "Get thoughtful wardrobe advice and occasion-ready looks from independent styling professionals."
+                : "Explore services from approved professionals and find the right person for your needs."}
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-4 text-xs text-white/90">
+            <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 border-t border-white/15 pt-5 text-xs font-medium text-white/85">
               <span className="flex items-center gap-2">
-                <Sparkles size={15} className="text-pink-300" />
-                Personalised fashion
+                <BadgeCheck size={15} className="text-pink-200" />
+                Approved professionals
               </span>
               <span className="flex items-center gap-2">
-                <Clock3 size={15} className="text-pink-300" />
+                <Clock3 size={15} className="text-pink-200" />
                 Flexible appointments
               </span>
             </div>
           </div>
+
+          <div className="relative min-h-[210px] overflow-hidden sm:min-h-[280px] md:min-h-full">
+            <picture>
+              <source
+                media="(max-width: 640px)"
+                srcSet="/images/hero-mobile.webp"
+              />
+              <img
+                src={FALLBACK_IMAGE}
+                alt="Fashion styling and occasion wear inspiration"
+                fetchPriority="high"
+                className="absolute inset-0 h-full w-full object-cover object-center"
+              />
+            </picture>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#240b21]/35 via-transparent to-transparent md:bg-gradient-to-r md:from-[#35102f]/35 md:via-transparent md:to-transparent" />
+            <span className="absolute bottom-4 right-4 border border-white/25 bg-black/25 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-sm">
+              Style, your way
+            </span>
+          </div>
         </section>
 
-        {/* Search */}
-        <section className="mt-8">
-          <label className="flex items-center gap-3 rounded-2xl border border-styler-line bg-styler-surface px-4 py-3.5 shadow-soft focus-within:border-styler-accent">
-            <Search size={19} className="shrink-0 text-styler-accent" />
-            <input
-              type="search"
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-              placeholder="Search services, designs or styles..."
-              aria-label="Search services"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-styler-muted"
-            />
-            {q && (
-              <button
-                type="button"
-                onClick={() => setQ("")}
-                className="text-xs font-semibold text-styler-accent"
-              >
-                Clear
-              </button>
-            )}
-          </label>
-        </section>
-
-        {/* Results */}
-        <section className="py-8">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <section className="mt-8 border-b border-styler-line pb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-styler-accent">
-                Styler services
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-styler-accent">
+                Explore the collection
               </p>
-              <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
-                {humanize(category)} Services
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+                {humanize(category)} services
               </h2>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               {!loading && (
-                <p className="mt-1 text-sm text-styler-muted">
+                <p className="text-xs text-styler-muted">
                   {items.length} {items.length === 1 ? "service" : "services"} found
                 </p>
               )}
+              <label className="flex min-h-11 w-full items-center gap-3 border border-styler-line bg-styler-surface px-3.5 transition focus-within:border-styler-accent sm:w-[320px]">
+                <Search size={17} className="shrink-0 text-styler-accent" />
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(event) => setQ(event.target.value)}
+                  placeholder="Search services or styles"
+                  aria-label="Search services"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-styler-muted"
+                />
+                {q && (
+                  <button
+                    type="button"
+                    onClick={() => setQ("")}
+                    className="text-xs font-semibold text-styler-accent"
+                  >
+                    Clear
+                  </button>
+                )}
+              </label>
             </div>
-            <Link
-              href="/professionals"
-              className="inline-flex items-center gap-1 text-sm font-semibold text-styler-accent hover:underline"
-            >
-              Browse professionals <ArrowUpRight size={16} />
-            </Link>
           </div>
+        </section>
 
+        <section className="py-7">
           {error && <Alert tone="error">{error}</Alert>}
 
           {loading ? (
             <LoadingBlock label="Finding services..." />
           ) : items.length > 0 ? (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {items.map((service, index) => {
                 const image = service.images?.find((item) => item.url)?.url || FALLBACK_IMAGE;
                 const profileHref = service.professional?.slug
@@ -203,7 +212,7 @@ export function ServiceCategoryPage({
                 return (
                   <article
                     key={service._id || service.id || `${service.title}-${index}`}
-                    className="group overflow-hidden rounded-2xl border border-styler-line bg-styler-surface shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+                    className="group overflow-hidden border border-styler-line bg-styler-surface shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-panel"
                   >
                     <Link href={profileHref} className="block">
                       <div className="relative aspect-[4/3] overflow-hidden bg-styler-surface-2">
@@ -213,7 +222,7 @@ export function ServiceCategoryPage({
                           loading="lazy"
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         />
-                        <span className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-styler-accent shadow-sm">
+                        <span className="absolute left-3 top-3 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-styler-accent shadow-sm">
                           {humanize(service.category || category)}
                         </span>
                       </div>
@@ -251,7 +260,7 @@ export function ServiceCategoryPage({
                       </div>
                     </Link>
 
-                    <div className="mx-5 mb-5 flex items-center justify-between gap-3 rounded-xl bg-styler-surface-2 p-3">
+                    <div className="mx-5 mb-5 flex items-center justify-between gap-3 border border-styler-line bg-styler-surface-2 p-3">
                       <div className="min-w-0">
                         <p className="truncate text-xs font-semibold">
                           {service.professional?.displayName || "Styler professional"}
@@ -266,7 +275,7 @@ export function ServiceCategoryPage({
                       <Link
                         href={profileHref}
                         aria-label={`View ${service.professional?.displayName || "professional"} profile`}
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-styler-surface text-styler-accent transition hover:bg-styler-accent hover:text-white"
+                        className="grid h-9 w-9 shrink-0 place-items-center bg-styler-surface text-styler-accent transition hover:bg-styler-accent hover:text-white"
                       >
                         <ArrowUpRight size={17} />
                       </Link>
@@ -276,33 +285,38 @@ export function ServiceCategoryPage({
               })}
             </div>
           ) : (
-            <EmptyState
-              title="No services found"
-              description={
-                q
-                  ? "Try another search term or clear your search."
-                  : "New services will appear here as professionals join Styler."
-              }
-              icon={<Search size={24} />}
-              action={
-                <div className="flex flex-wrap justify-center gap-3">
-                  {q && (
-                    <button
-                      onClick={() => setQ("")}
-                      className="rounded-xl border border-styler-line px-4 py-2.5 text-sm font-semibold"
-                    >
-                      Clear search
-                    </button>
-                  )}
-                  <Link
-                    href="/professionals"
-                    className="inline-flex items-center gap-2 rounded-xl bg-styler-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-styler-accent-strong"
+            <div className="grid gap-6 border border-styler-line bg-styler-surface p-6 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-8">
+              <div className="grid h-12 w-12 place-items-center border border-styler-line bg-styler-surface-2 text-styler-accent">
+                <Search size={21} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {q ? "No matching services" : "More styles are on the way"}
+                </h3>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-styler-muted">
+                  {q
+                    ? "Try a different search, or clear it to see all available services."
+                    : `There aren't any ${humanize(category).toLowerCase()} services listed just yet. Browse our professionals to find someone who can help.`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                {q && (
+                  <button
+                    type="button"
+                    onClick={() => setQ("")}
+                    className="border border-styler-line px-4 py-2.5 text-sm font-semibold transition hover:bg-styler-surface-2"
                   >
-                    Find professionals <ArrowUpRight size={16} />
-                  </Link>
-                </div>
-              }
-            />
+                    Clear search
+                  </button>
+                )}
+                <Link
+                  href="/professionals"
+                  className="inline-flex items-center justify-center gap-2 bg-styler-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-styler-accent-strong"
+                >
+                  Browse professionals <ArrowUpRight size={16} />
+                </Link>
+              </div>
+            </div>
           )}
         </section>
       </main>
