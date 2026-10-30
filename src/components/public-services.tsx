@@ -35,8 +35,7 @@ type Service = {
   professionalId?: string;
 };
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=900&q=85";
+const FALLBACK_IMAGE = "/images/hero-desktop.webp";
 
 export function ServiceCategoryPage({
   category,
@@ -95,12 +94,18 @@ export function ServiceCategoryPage({
 
         {/* Premium hero */}
         <section className="relative isolate mt-6 overflow-hidden rounded-3xl bg-[#35102f] shadow-soft">
-          <img
-            src={FALLBACK_IMAGE}
-            alt="Indian occasion wear and fashion design"
-            fetchPriority="high"
-            className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-          />
+          <picture>
+            <source
+              media="(max-width: 640px)"
+              srcSet="/images/hero-mobile.webp"
+            />
+            <img
+              src={FALLBACK_IMAGE}
+              alt="Indian occasion wear and fashion design"
+              fetchPriority="high"
+              className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
+            />
+          </picture>
           <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#240b21]/95 via-[#35102f]/80 to-[#35102f]/30" />
 
           <div className="max-w-2xl px-6 py-12 text-white sm:px-10 sm:py-16">

@@ -24,19 +24,29 @@ function readableSlug(slug: string): string {
 }
 
 async function getProfile(slug: string) {
-  return getPublicProfessional(slug);
+  try {
+    return { data: await getPublicProfessional(slug), failed: false };
+  } catch (error) {
+    console.error("Could not load professional profile for public page.", { slug, error });
+    return { data: null, failed: true };
+  }
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getProfile(slug);
+  const { data, failed } = await getProfile(slug);
   const profile = data?.professional;
 
   if (!profile) {
     return {
-      title: "Professional Not Found | Styler",
+      title: failed
+        ? `${readableSlug(slug)} | Fashion Professional | Styler`
+        : "Professional Not Found | Styler",
+      description: failed
+        ? `Discover ${readableSlug(slug)} on Styler. Explore fashion services, specialties and professional profiles.`
+        : undefined,
       robots: {
         index: false,
         follow: true,
@@ -99,15 +109,15 @@ export default async function ProfessionalPage({
   params,
 }: PageProps) {
   const { slug } = await params;
-  const initialData = await getProfile(slug);
+  const { data, failed } = await getProfile(slug);
 
-  if (!initialData?.professional) {
+  if (!failed && !data?.professional) {
     notFound();
   }
 
-  const profile = initialData.professional;
-  const name = profile.displayName?.trim() || readableSlug(slug);
-  const canonicalSlug = profile.slug || slug;
+  const profile = data?.professional;
+  const name = profile?.displayName?.trim() || readableSlug(slug);
+  const canonicalSlug = profile?.slug || slug;
   const canonicalUrl = `${BASE_URL}/professionals/${encodeURIComponent(
     canonicalSlug
   )}`;
@@ -118,7 +128,7 @@ export default async function ProfessionalPage({
         page={{
           name: `${name} | Fashion Professional`,
           description:
-            profile.bio?.trim() ||
+            profile?.bio?.trim() ||
             `Discover ${name}'s fashion profile and available services on Styler.`,
           url: canonicalUrl,
           breadcrumb: [
@@ -139,10 +149,7 @@ export default async function ProfessionalPage({
       />
 
       <main className="min-h-screen bg-background">
-        <ProfessionalDetail
-          slug={slug}
-          initialData={initialData}
-        />
+        <ProfessionalDetail slug={slug} />
       </main>
     </>
   );

@@ -77,8 +77,6 @@ const configuredBaseUrl = [
       return false;
     }
   });
-const BASE_URL = configuredBaseUrl ||
-  (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://styler.com");
 
 const PHOTOS = [
   "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1000&q=85",
@@ -129,11 +127,23 @@ function extractServices(payload: unknown): RawService[] {
 
 async function loadServices(): Promise<{ items: RawService[]; error?: string }> {
   try {
-    const url = new URL("/api/services", BASE_URL);
+    const baseUrl = (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
+      configuredBaseUrl ||
+      (process.env.NODE_ENV === "development" ? "http://localhost:3000" : undefined);
+
+    if (!baseUrl) {
+      throw new Error("Unable to determine the application origin for service listings.");
+    }
+
+    const url = new URL("/api/services", baseUrl);
     url.searchParams.set("limit", "100");
 
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
+      console.error("Failed to load public services.", {
+        status: response.status,
+        url: url.pathname,
+      });
       return {
         items: [],
         error: "Service listings are temporarily unavailable. Please try again shortly.",
@@ -144,7 +154,8 @@ async function loadServices(): Promise<{ items: RawService[]; error?: string }> 
     return {
       items: extractServices(payload).filter((s) => s.isActive !== false),
     };
-  } catch {
+  } catch (error) {
+    console.error("Failed to load public services.", error);
     return {
       items: [],
       error: "We couldn't load services right now. Please try again shortly.",
