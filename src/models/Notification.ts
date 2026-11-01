@@ -2,7 +2,7 @@ import { Schema, model, models, InferSchemaType } from "mongoose";
 
 const DeliverySchema = new Schema(
   {
-    channel: { type: String, required: true, enum: ["email", "web_push" ] },
+    channel: { type: String, required: true, enum: ["email", "web_push", "mobile_push"] },
     status: { type: String, required: true, enum: ["queued", "sending", "sent", "delivered", "failed", "skipped"], default: "queued" },
     providerMessageId: { type: String, trim: true, maxlength: 250 },
     attemptCount: { type: Number, min: 0, default: 0 },
@@ -31,7 +31,7 @@ export const NotificationSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 160 },
     message: { type: String, required: true, trim: true, maxlength: 2000 },
     data: { type: Schema.Types.Mixed, default: {} },
-    channels: { type: [String], enum: ["in_app", "email", "web_push"], default: ["in_app"] },
+    channels: { type: [String], enum: ["in_app", "email", "web_push", "mobile_push"], default: ["in_app"] },
     deliveries: { type: [DeliverySchema], default: [] },
     readAt: { type: Date, default: null },
     dedupeKey: { type: String, trim: true, maxlength: 250 },

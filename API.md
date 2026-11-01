@@ -33,7 +33,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | GET, POST | `/api/cron/expire-offers` | Cron | Expire outstanding offers and requests past their deadlines. |
 | GET, POST | `/api/cron/expire-payment-holds` | Cron | Expire unpaid booking holds and reconcile their booking state. |
 | GET, POST | `/api/cron/retry-matching-requests` | Cron | Retry offer dispatch for requests still in matching state. |
-| GET, POST | `/api/cron/retry-notifications` | Cron | Lease and deliver queued email/web-push notifications with bounded concurrency and exponential retry. |
+| GET, POST | `/api/cron/retry-notifications` | Cron | Retry queued/failed email, browser-push and native mobile-push deliveries with bounded concurrency. Native push is attempted immediately when the notification is created. |
 | GET, POST | `/api/cron/reconcile-payouts` | Cron | Reconcile payouts missing after completed bookings and release account-verification holds when eligible. |
 
 ## Authentication
@@ -124,6 +124,8 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | GET | `/api/notifications/push-subscriptions` | Authenticated | Return the configured Web Push public key. |
 | POST | `/api/notifications/push-subscriptions` | Authenticated | Save/update a Web Push subscription for the current user. |
 | DELETE | `/api/notifications/push-subscriptions` | Authenticated | Deactivate the current user's Web Push subscription endpoint. |
+| POST | `/api/notifications/device-tokens` | Customer / Professional | Register an Expo push token for the authenticated physical device. |
+| DELETE | `/api/notifications/device-tokens` | Customer / Professional | Deactivate the authenticated user's Expo push token. |
 | POST | `/api/imagekit/auth` | Customer / Professional | Create a constrained ImageKit upload signature for an allowed upload purpose. |
 
 ## Admin portal
@@ -171,7 +173,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 ## Operational notes
 
 - Admin account suspension is intentionally unavailable through the user-management API; administrators can only moderate customer and professional accounts.
-- Professional notifications use the same authenticated notification feed and per-user read state as customer notifications. Web Push is optional and requires VAPID configuration.
+- Professional notifications use the same authenticated notification feed and per-user read state as customer notifications. Browser Web Push is optional and requires VAPID configuration; native push requires an Expo project and platform credentials.
 - Request/offer refresh in the portals is periodic polling, not instantaneous server push.
 - Cron routes require a configured secret and must be invoked by an external scheduler in production.
 - Provider-backed payment, refund, payout, email, upload, and geocoding behavior still requires valid staging credentials and end-to-end verification.

@@ -2,8 +2,9 @@ import Notification from "@/models/Notification";
 import User from "@/models/User";
 import { sendBookingEmail } from "@/lib/zeptomail";
 import { sendWebPushToUser } from "@/lib/web-push";
+import { sendExpoPushToUser } from "@/lib/expo-push";
 
-export type NotificationChannel = "in_app" | "email" | "web_push";
+export type NotificationChannel = "in_app" | "email" | "web_push" | "mobile_push";
 export type NotificationType =
   | "booking_request_received" | "booking_offer_accepted" | "booking_offer_closed"
   | "booking_confirmed" | "booking_cancelled" | "booking_started" | "booking_completed" | "booking_update"
@@ -22,9 +23,9 @@ export interface NotifyUserInput {
 
 /** Persist in-app notification immediately and queue external delivery for an authenticated worker. */
 export async function notifyUser(input: NotifyUserInput) {
-  const channels = [...new Set<NotificationChannel>(["in_app", ...(input.channels ?? [])])];
+  const channels = [...new Set<NotificationChannel>(["in_app", "mobile_push", ...(input.channels ?? [])])];
   try {
-    return await Notification.create({
+    const notification = await Notification.create({
       recipientUserId: input.recipientUserId,
       type: input.type,
       title: input.title.slice(0, 160),
@@ -36,6 +37,14 @@ export async function notifyUser(input: NotifyUserInput) {
         .filter((channel) => channel !== "in_app")
         .map((channel) => ({ channel, status: "queued", attemptCount: 0 })),
     });
+    if (channels.includes("mobile_push")) {
+      try {
+        await deliverNewMobilePush(notification);
+      } catch (error) {
+        console.error("Unable to deliver native mobile push immediately", error instanceof Error ? error.message : "Unknown error");
+      }
+    }
+    return notification;
   } catch (error) {
     if ((error as { code?: number })?.code === 11000 && input.dedupeKey) {
       const existing = await Notification.findOne({ dedupeKey: input.dedupeKey });
@@ -103,7 +112,7 @@ function arrayFilterFromClaim(filter: Record<string, unknown>): Record<string, u
 
 async function deliverClaimedNotification(input: {
   note: any;
-  channel: "email" | "web_push";
+  channel: "email" | "web_push" | "mobile_push";
   attemptAt: Date;
 }): Promise<"sent" | "failed" | "skipped"> {
   const { note, channel, attemptAt } = input;
@@ -119,7 +128,8 @@ async function deliverClaimedNotification(input: {
       status = "skipped";
       lastError = "Recipient account is unavailable or inactive.";
     } else if (
-      user.notificationPreferences?.[channel === "web_push" ? "webPush" : "email"] === false
+      (channel === "web_push" && user.notificationPreferences?.webPush === false)
+      || (channel === "email" && user.notificationPreferences?.email === false)
     ) {
       status = "skipped";
       lastError = "Recipient disabled this notification channel.";
@@ -131,7 +141,7 @@ async function deliverClaimedNotification(input: {
         message: note.message,
       });
       providerMessageId = result.messageId;
-    } else {
+    } else if (channel === "web_push") {
       const result = await sendWebPushToUser({
         userId: String(note.recipientUserId),
         title: note.title,
@@ -142,6 +152,21 @@ async function deliverClaimedNotification(input: {
       if (result.sent === 0 && result.failed === 0) {
         status = "skipped";
         lastError = "No active browser push subscription exists for this user.";
+      } else {
+        providerMessageId = `sent:${result.sent};failed:${result.failed}`;
+      }
+    } else {
+      const result = await sendExpoPushToUser({
+        userId: String(note.recipientUserId),
+        title: note.title,
+        body: note.message,
+        data: { ...((note.data ?? {}) as Record<string, unknown>), notificationId: String(note._id) },
+      });
+      if (result.skipped) {
+        status = "skipped";
+        lastError = "No active mobile push token exists for this user.";
+      } else if (result.sent === 0 && result.failed > 0) {
+        throw new Error("All Expo mobile push deliveries failed.");
       } else {
         providerMessageId = `sent:${result.sent};failed:${result.failed}`;
       }
@@ -170,6 +195,26 @@ async function deliverClaimedNotification(input: {
   return status;
 }
 
+async function deliverNewMobilePush(notification: any) {
+  const delivery = (notification.deliveries ?? []).find((item: any) => item.channel === "mobile_push");
+  if (!delivery || !isDue(delivery, Date.now())) return;
+  const attemptAt = new Date();
+  const claimFilter = deliveryClaimFilter(delivery, attemptAt);
+  const claimed = await Notification.findOneAndUpdate(
+    { _id: notification._id, deliveries: { $elemMatch: claimFilter } },
+    {
+      $set: {
+        "deliveries.$[delivery].status": "sending",
+        "deliveries.$[delivery].attemptedAt": attemptAt,
+        "deliveries.$[delivery].leaseUntil": new Date(attemptAt.getTime() + DELIVERY_LEASE_MS),
+      },
+      $inc: { "deliveries.$[delivery].attemptCount": 1 },
+    },
+    { new: true, arrayFilters: [arrayFilterFromClaim(claimFilter)] },
+  ).lean();
+  if (claimed) await deliverClaimedNotification({ note: claimed, channel: "mobile_push", attemptAt });
+}
+
 /** Atomic lease-based worker, safe for overlapping cron invocations. */
 export async function processQueuedNotificationDeliveries(input: { limit?: number; concurrency?: number } = {}) {
   const limit = Math.max(1, Math.min(250, Math.floor(input.limit ?? 100)));
@@ -186,14 +231,14 @@ export async function processQueuedNotificationDeliveries(input: { limit?: numbe
     { status: "sending", attemptCount: { $lt: MAX_DELIVERY_ATTEMPTS }, leaseUntil: { $lte: now } },
   ];
   const notifications = await Notification.find({
-    deliveries: { $elemMatch: { channel: { $in: ["email", "web_push"] }, $or: dueConditions } },
+    deliveries: { $elemMatch: { channel: { $in: ["email", "web_push", "mobile_push"] }, $or: dueConditions } },
   }).sort({ createdAt: 1 }).limit(limit)
     .select("recipientUserId title message data deliveries createdAt").lean();
 
   const jobs: Array<{ note: any; delivery: any }> = [];
   for (const note of notifications) {
     for (const delivery of note.deliveries ?? []) {
-      if ((delivery.channel === "email" || delivery.channel === "web_push") && isDue(delivery, now.getTime())) {
+      if ((delivery.channel === "email" || delivery.channel === "web_push" || delivery.channel === "mobile_push") && isDue(delivery, now.getTime())) {
         jobs.push({ note, delivery });
       }
     }
