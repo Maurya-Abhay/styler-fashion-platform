@@ -2,9 +2,11 @@ import { z } from "zod";
 import Booking from "@/models/Booking";
 import ChatMessage from "@/models/ChatMessage";
 import ProfessionalProfile from "@/models/ProfessionalProfile";
+import User from "@/models/User";
 import { currentUser, readJson, routeParams, requireId, withApi } from "@/lib/api-utils";
 import { AppError } from "@/types";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { notifyUser } from "@/lib/notifications";
 
 const messageSchema = z.object({
   body: z.string().trim().min(1).max(2000),
@@ -58,11 +60,33 @@ export const POST = withApi(async (request, context) => {
   }
   await enforceRateLimit({ key: `chat:${auth.userId}`, limit: 30, windowMs: 60_000 });
   const { body } = messageSchema.parse(await readJson(request));
+  const recipientUserId = auth.role === "customer"
+    ? (await ProfessionalProfile.findById(booking.professionalId).select("userId").lean())?.userId
+    : booking.customerId;
+  if (!recipientUserId) throw new AppError("Could not find the other booking participant.", 409, "CHAT_RECIPIENT_NOT_FOUND");
+  const expectedRecipientRole = auth.role === "customer" ? "professional" : "customer";
+  const recipient = await User.findById(recipientUserId).select("role").lean();
+  if (
+    String(recipientUserId) === auth.userId
+    || recipient?.role !== expectedRecipientRole
+  ) {
+    throw new AppError("The other booking participant is not a valid recipient.", 409, "CHAT_RECIPIENT_INVALID");
+  }
   const message = await ChatMessage.create({
     bookingId: booking._id,
     senderUserId: auth.userId,
     senderRole: auth.role,
     body,
+  });
+  await notifyUser({
+    recipientUserId: String(recipientUserId),
+    type: "chat_message",
+    title: "New booking message",
+    message: body.slice(0, 180),
+    data: { bookingId: String(booking._id), chatMessage: true },
+    dedupeKey: `chat-message:${String(message._id)}`,
+  }).catch((error) => {
+    console.error("Unable to notify booking chat recipient", error instanceof Error ? error.message : "Unknown error");
   });
   return message;
 });

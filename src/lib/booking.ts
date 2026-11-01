@@ -68,6 +68,18 @@ export function validateQuotePrice(
   return quotePaise;
 }
 
+async function notifyCustomerMatchingStarted(customerId: string, requestId: string) {
+  await notifyUser({
+    recipientUserId: customerId,
+    type: "booking_request_received",
+    title: "Request received",
+    message: "We received your request and are matching it with available professionals.",
+    channels: ["in_app", "email"],
+    data: { requestId },
+    dedupeKey: `request-matching-customer:${requestId}`,
+  }).catch((error) => console.error("Unable to notify customer that matching started", error instanceof Error ? error.message : "Unknown notification error"));
+}
+
 export async function createBookingRequest(input: CreateBookingRequestInput) {
   const start = new Date(input.preferredStartAt);
   const end = new Date(input.preferredEndAt);
@@ -99,6 +111,7 @@ export async function createBookingRequest(input: CreateBookingRequestInput) {
   });
   try {
     const matching = await dispatchOffersForRequest(String(request._id));
+    if (matching.status === "offers_sent") await notifyCustomerMatchingStarted(input.customerId, String(request._id));
     return { request: await BookingRequest.findById(request._id).lean(), matching };
   } catch (error) {
     // The request is already durable. If dispatch had a transient failure, return
@@ -111,6 +124,7 @@ export async function createBookingRequest(input: CreateBookingRequestInput) {
         status: current.status,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+      if (current.status === "matching") await notifyCustomerMatchingStarted(input.customerId, String(request._id));
       return {
         request: current,
         matching: {
@@ -186,7 +200,6 @@ export async function acceptBookingOffer(input: {
       if (!winner.modifiedCount) throw new AppError("Another professional already accepted this request.", 409, "REQUEST_ALREADY_ASSIGNED");
 
       const settings = await getPlatformSettings();
-      const paymentDueAt = new Date(now.getTime() + settings.paymentHoldMinutes * 60_000);
       const totalPaise = servicePricePaise + customerFeePaise;
       if (!Number.isSafeInteger(totalPaise) || totalPaise < 100) throw new AppError("The final price must be at least ₹1.00.", 400, "INVALID_BOOKING_PRICE");
       const [booking] = await Booking.create([{
@@ -213,14 +226,14 @@ export async function acceptBookingOffer(input: {
           currency: "INR",
           settingsVersion: settingsVersion || settings.settingsVersion,
         },
-        startAt, endAt, status: "pending_payment", paymentDueAt,
+        startAt, endAt, status: "pending_payment",
         statusHistory: [{ status: "pending_payment", changedBy: input.professionalUserId, note: "Professional accepted the offer; awaiting customer payment.", changedAt: now }],
       }], { session });
 
       await reserveWindowBlocks({
         professionalId: String(profile._id), startAt, endAt, bufferMinutes,
         bookingRequestId: String(request._id), bookingOfferId: String(offer._id), bookingId: String(booking._id),
-        expiresAt: paymentDueAt, session,
+        session,
       });
       const accepted = await BookingOffer.updateOne({ _id: offer._id, status: "sent" }, { $set: { status: "accepted", respondedAt: now } }, { session });
       if (!accepted.modifiedCount) throw new AppError("Offer was processed by another request.", 409, "OFFER_RACE_CONDITION");
@@ -238,7 +251,7 @@ export async function acceptBookingOffer(input: {
   const assignedResult = result as unknown as { bookingId: string; requestId: string; customerId: string; professionalId: string } | null;
   if (!assignedResult) throw new AppError("Booking assignment could not be completed.", 500, "BOOKING_ASSIGNMENT_FAILED");
   await Promise.allSettled([
-    notifyUser({ recipientUserId: assignedResult.customerId, type: "booking_offer_accepted", title: "A professional accepted your request", message: "Your request has been accepted. Complete payment before the checkout hold expires.", channels: ["in_app", "email"], data: { bookingId: assignedResult.bookingId }, dedupeKey: `booking-accepted-customer:${assignedResult.bookingId}` }),
+    notifyUser({ recipientUserId: assignedResult.customerId, type: "booking_offer_accepted", title: "A professional accepted your request", message: "Your request has been accepted. Pay for the booking any time to confirm the appointment.", channels: ["in_app", "email"], data: { bookingId: assignedResult.bookingId }, dedupeKey: `booking-accepted-customer:${assignedResult.bookingId}` }),
     notifyUser({ recipientUserId: assignedResult.professionalId, type: "booking_offer_accepted", title: "You got the booking", message: "You accepted the request. The booking becomes confirmed after the customer payment is verified.", channels: ["in_app", "email", "web_push"], data: { bookingId: assignedResult.bookingId }, dedupeKey: `booking-accepted-professional:${assignedResult.bookingId}` }),
   ]);
   return Booking.findById(assignedResult.bookingId).lean();
@@ -394,30 +407,32 @@ export async function cancelBooking(input: { bookingId: string; actor: Authentic
   };
 }
 
-export async function expirePendingPaymentBookings(now = new Date()): Promise<number> {
-  const dueBookings = await Booking.find({ status: "pending_payment", paymentDueAt: { $lte: now } }).select("_id bookingRequestId bookingOfferId customerId professionalId paymentDueAt").limit(500).lean();
-  let expiredCount = 0;
-  for (const due of dueBookings) {
+export async function preservePendingPaymentBookings(): Promise<number> {
+  const pendingBookings = await Booking.find({
+    status: "pending_payment",
+    paymentDueAt: { $exists: true },
+  }).select("_id").limit(500).lean();
+  let preservedCount = 0;
+  for (const pending of pendingBookings) {
     const session = await mongoose.startSession();
-    let changed = false;
+    let preserved = false;
     try {
       await session.withTransaction(async () => {
         const booking = await Booking.findOneAndUpdate(
-          { _id: due._id, status: "pending_payment", paymentDueAt: { $lte: now } },
-          { $set: { status: "payment_failed" }, $push: { statusHistory: { status: "payment_failed", note: "Payment hold expired.", changedAt: now } } },
+          { _id: pending._id, status: "pending_payment", paymentDueAt: { $exists: true } },
+          { $unset: { paymentDueAt: 1 } },
           { new: true, session },
         );
         if (!booking) return;
-        await releaseReservation(`${String(due.bookingRequestId)}:${String(due.bookingOfferId)}`, "expired", session);
-        await BookingRequest.updateOne({ _id: due.bookingRequestId, status: "assigned" }, { $set: { status: "expired", noMatchReason: "Customer payment deadline passed." } }, { session });
-        await Payment.updateMany({ bookingId: due._id, status: { $in: ["created", "authorized"] } }, { $set: { status: "failed", failureDescription: "Customer payment deadline passed." } }, { session });
-        changed = true;
+        await SlotReservation.updateMany(
+          { bookingId: booking._id, status: "held" },
+          { $unset: { expiresAt: 1 } },
+          { session },
+        );
+        preserved = true;
       });
     } finally { await session.endSession(); }
-    if (changed) {
-      expiredCount++;
-      await notifyUser({ recipientUserId: String(due.customerId), type: "payment_failed", title: "Payment window expired", message: "The payment window expired and the time slot was released. Please create a new request.", channels: ["in_app", "email"], data: { bookingId: String(due._id) }, dedupeKey: `payment-hold-expired:${String(due._id)}` }).catch((error) => console.error("Payment expiry notification failed", error));
-    }
+    if (preserved) preservedCount++;
   }
-  return expiredCount;
+  return preservedCount;
 }

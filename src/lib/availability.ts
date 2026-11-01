@@ -164,13 +164,12 @@ export async function isWindowAvailable(input: {
   const intervalMinutes = Number(availability.slotIntervalMinutes ?? 15);
   const reservationStart = floorToMinutes(input.startAt, intervalMinutes);
   const reservationEnd = ceilToMinutes(endWithBuffer, intervalMinutes);
-  const now = new Date();
   const reservationQuery = SlotReservation.findOne({
     professionalId: input.professionalId,
     blockStartAt: { $gte: reservationStart, $lt: reservationEnd },
     $or: [
       { status: "confirmed" },
-      { status: "held", expiresAt: { $gt: now } },
+      { status: "held" },
     ],
   });
   if (input.session) reservationQuery.session(input.session);
@@ -217,13 +216,12 @@ export async function findAvailableStartTimes(input: AvailableStartInput): Promi
     new Date(maxStart + totalMinutes * 60_000),
     step,
   );
-  const now = new Date();
   const reservationQuery = SlotReservation.find({
     professionalId: input.professionalId,
     blockStartAt: { $gte: searchStart, $lt: reservationEnd },
     $or: [
       { status: "confirmed" },
-      { status: "held", expiresAt: { $gt: now } },
+      { status: "held" },
     ],
   }).select("blockStartAt");
   if (input.session) reservationQuery.session(input.session);
@@ -343,7 +341,7 @@ export async function setAcceptingRequests(professionalId: string, acceptingRequ
 
 export async function reserveWindowBlocks(input: {
   professionalId: string; startAt: Date; endAt: Date; bufferMinutes?: number;
-  bookingRequestId: string; bookingOfferId: string; bookingId: string; expiresAt: Date; session: ClientSession;
+  bookingRequestId: string; bookingOfferId: string; bookingId: string; expiresAt?: Date | null; session: ClientSession;
 }): Promise<string> {
   const availability = await Availability.findOne({ professionalId: input.professionalId })
     .session(input.session)
@@ -357,32 +355,19 @@ export async function reserveWindowBlocks(input: {
   for (let cursor = start.getTime(); cursor < end.getTime(); cursor += intervalMinutes * 60_000) blockDates.push(new Date(cursor));
   if (!blockDates.length) throw new AppError("The requested time range is invalid.", 400, "INVALID_TIME_RANGE");
   const reservationId = `${input.bookingRequestId}:${input.bookingOfferId}`;
-  const now = new Date();
-  // Expired holds may be waiting for the background job. Release matching stale blocks
-  // here as well so an on-time retry is not blocked by a delayed scheduler.
-  await SlotReservation.updateMany(
-    {
-      professionalId: input.professionalId,
-      blockStartAt: { $in: blockDates },
-      status: "held",
-      expiresAt: { $lte: now },
-    },
-    { $set: { status: "expired", releasedAt: now } },
-    { session: input.session },
-  );
   const conflicts = await SlotReservation.findOne({
     professionalId: input.professionalId,
     blockStartAt: { $in: blockDates },
     $or: [
       { status: "confirmed" },
-      { status: "held", expiresAt: { $gt: now } },
+      { status: "held" },
     ],
   }).session(input.session).lean();
   if (conflicts) throw new AppError("This time was just booked by another customer. Please try again.", 409, "SLOT_CONFLICT");
   await SlotReservation.insertMany(blockDates.map((blockStartAt) => ({
     reservationId, professionalId: input.professionalId, blockStartAt,
     bookingRequestId: input.bookingRequestId, bookingOfferId: input.bookingOfferId,
-    bookingId: input.bookingId, status: "held", expiresAt: input.expiresAt,
+    bookingId: input.bookingId, status: "held", expiresAt: input.expiresAt ?? null,
   })), { session: input.session, ordered: true });
   return reservationId;
 }

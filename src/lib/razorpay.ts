@@ -143,9 +143,8 @@ export async function createPaymentOrderForBooking(input: { bookingId: string; c
     _id: input.bookingId,
     customerId: input.customerId,
     status: "pending_payment",
-    paymentDueAt: { $gt: new Date() },
   }).lean();
-  if (!booking) throw new AppError("Booking is unavailable for payment or the payment window has expired.", 409, "BOOKING_NOT_PAYABLE");
+  if (!booking) throw new AppError("This booking is unavailable for payment. It may have been cancelled or already paid.", 409, "BOOKING_NOT_PAYABLE");
 
   const amountPaise = Number(booking.priceSnapshot.totalPaise);
   if (!Number.isSafeInteger(amountPaise) || amountPaise < 100) {
@@ -284,12 +283,12 @@ async function confirmCapturedPayment(paymentId: unknown, razorpayPayment: Razor
 
       const now = new Date();
       const alreadyConfirmed = ["confirmed", "in_progress", "completed"].includes(booking.status);
-      const canConfirm = booking.status === "pending_payment" && (!booking.paymentDueAt || booking.paymentDueAt > now);
+      const canConfirm = booking.status === "pending_payment";
       if (alreadyConfirmed) {
         result = { bookingId: String(booking._id), paymentId: String(payment._id), customerId: String(booking.customerId), professionalUserId: "", confirmed: true };
       } else if (canConfirm) {
         const confirmed = await Booking.updateOne(
-          { _id: booking._id, status: "pending_payment", paymentDueAt: { $gt: now } },
+          { _id: booking._id, status: "pending_payment" },
           { $set: { status: "confirmed", confirmedAt: now }, $push: { statusHistory: { status: "confirmed", note: "Razorpay payment captured and verified.", changedAt: now } } },
           { session },
         );
@@ -398,7 +397,7 @@ export async function processRazorpayWebhook(input: { rawBody: string; signature
           payment.failureDescription = entity.error_description;
           payment.lastProviderEventAt = new Date();
           await payment.save();
-          await notifyUser({ recipientUserId: String(payment.customerId), type: "payment_failed", title: "Payment failed", message: "Razorpay could not complete the payment. You can retry while the payment window is open.", channels: ["in_app", "email"], data: { bookingId: String(payment.bookingId) }, dedupeKey: `payment-failed:${String(payment._id)}` });
+          await notifyUser({ recipientUserId: String(payment.customerId), type: "payment_failed", title: "Payment failed", message: "Razorpay could not complete the payment. You can retry from your booking while it is awaiting payment.", channels: ["in_app", "email"], data: { bookingId: String(payment.bookingId) }, dedupeKey: `payment-failed:${String(payment._id)}` });
         }
       }
     } else if (eventType.startsWith("refund.")) {

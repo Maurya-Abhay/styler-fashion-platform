@@ -15,8 +15,10 @@ const escapeHtml = (value: unknown) =>
     "'": "&#39;",
   } as Record<string, string>)[character]);
 
-const money = (paise: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100);
+const money = (paise: number | null | undefined) =>
+  typeof paise === "number" && Number.isFinite(paise)
+    ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100)
+    : "—";
 
 const dateTime = (value: Date | string | null | undefined) =>
   value ? new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
@@ -85,17 +87,17 @@ export const GET = withApi(async (request, context) => {
       ["Payment status", payment.status === "captured" ? "Paid" : payment.status.replaceAll("_", " ")],
       ["Professional", professional?.displayName || "Styler professional"],
       ["Appointment", dateTime(booking.startAt)],
-      ["Service amount", money(prices.servicePricePaise)],
-      ["Discount", `−${money(prices.discountPaise || 0)}`],
-      ["Platform fee", money(prices.customerPlatformFeePaise || 0)],
-      ["Tax", money(prices.taxPaise || 0)],
+      ["Service amount", money(prices?.servicePricePaise)],
+      ["Discount", `−${money(prices?.discountPaise ?? 0)}`],
+      ["Platform fee", money(prices?.customerPlatformFeePaise ?? 0)],
+      ["Tax", money(prices?.taxPaise ?? 0)],
       ["Amount paid", money(payment.amountPaise)],
       ["Payment method", payment.method || "Razorpay"],
       ["Razorpay payment ID", payment.razorpayPaymentId || "—"],
       ["Paid at", dateTime(payment.capturedAt)],
       ...(refunds.length ? [["Processed refunds", refunds.join("; ")] as [string, string]] : []),
     ];
-    const html = renderReceipt({
+    const receipt = {
       title: "Customer Payment Receipt",
       receiptNumber: `STY-PAY-${String(payment._id).slice(-10).toUpperCase()}`,
       issuedAt: payment.capturedAt || payment.createdAt,
@@ -107,7 +109,12 @@ export const GET = withApi(async (request, context) => {
       note: refunds.length
         ? "This receipt records the original captured payment. Processed refunds are listed above; bank posting times may vary."
         : "Payment was collected by Styler through Razorpay. This is a payment receipt, not a tax invoice.",
-    });
+    };
+    if (
+      new URL(request.url).searchParams.get("format") === "json" ||
+      request.headers.get("accept")?.includes("application/json")
+    ) return receipt;
+    const html = renderReceipt(receipt);
     return new Response(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",

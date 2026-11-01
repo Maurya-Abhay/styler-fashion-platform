@@ -31,7 +31,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | Method | Route | Access | Purpose |
 |---|---|---|---|
 | GET, POST | `/api/cron/expire-offers` | Cron | Expire outstanding offers and requests past their deadlines. |
-| GET, POST | `/api/cron/expire-payment-holds` | Cron | Expire unpaid booking holds and reconcile their booking state. |
+| GET, POST | `/api/cron/expire-payment-holds` | Cron | Remove legacy payment deadlines while preserving accepted booking slots until payment or cancellation. |
 | GET, POST | `/api/cron/retry-matching-requests` | Cron | Retry offer dispatch for requests still in matching state. |
 | GET, POST | `/api/cron/retry-notifications` | Cron | Retry queued/failed email, browser-push and native mobile-push deliveries with bounded concurrency. Native push is attempted immediately when the notification is created. |
 | GET, POST | `/api/cron/reconcile-payouts` | Cron | Reconcile payouts missing after completed bookings and release account-verification holds when eligible. |
@@ -69,7 +69,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | POST | `/api/bookings/[bookingId]/cancel` | Customer / Professional / Admin | Cancel an eligible booking according to platform cancellation/refund policy. |
 | POST | `/api/bookings/[bookingId]/start` | Professional | Mark the professional's confirmed booking as in progress. |
 | POST | `/api/bookings/[bookingId]/complete` | Professional | Complete an in-progress booking and create payout bookkeeping. |
-| POST | `/api/payments/order` | Customer | Create a payment order for the customer's eligible booking. |
+| POST | `/api/payments/order` | Customer | Create/reuse a payment order for the customer's accepted booking; its slot remains reserved until payment or cancellation. |
 | POST | `/api/payments/verify` | Customer | Verify checkout payment details and reconcile booking/payment state. |
 | GET | `/api/customer/payments` | Customer | List the customer's payments and payment summary. |
 | POST | `/api/reviews` | Customer | Review the customer's completed booking. |
@@ -165,7 +165,7 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | Method | Route | Access | Purpose |
 |---|---|---|---|
 | GET, POST | `/api/cron/expire-offers` | Cron | Expire offers past their response deadline. |
-| GET, POST | `/api/cron/expire-payment-holds` | Cron | Expire unpaid booking/payment holds. |
+| GET, POST | `/api/cron/expire-payment-holds` | Cron | Remove legacy payment deadlines while preserving accepted booking slots until payment or cancellation. |
 | GET, POST | `/api/cron/retry-matching-requests` | Cron | Retry persisted requests that remain in matching state. |
 | GET, POST | `/api/cron/retry-notifications` | Cron | Retry queued/failed notification deliveries. |
 | POST | `/api/webhooks/razorpay` | Razorpay | Verify Razorpay webhook signature and reconcile provider events idempotently. |
@@ -185,4 +185,4 @@ These endpoints require the configured cron authorization secret. Both GET and P
 | GET | `/api/admin/contact-messages` | Admin | List public contact-form submissions; optional status filter. |
 | PATCH | `/api/admin/contact-messages/[messageId]` | Admin | Move a contact submission through new, in-progress, or resolved states. |
 | GET | `/api/bookings/[bookingId]/messages` | Booking customer / assigned professional | Read the latest messages for an accepted booking. Exact booking participation is required. |
-| POST | `/api/bookings/[bookingId]/messages` | Booking customer / assigned professional | Send a message while the accepted booking is pending payment, confirmed, or in progress. |
+| POST | `/api/bookings/[bookingId]/messages` | Booking customer / assigned professional | Send a message while the accepted booking is pending payment, confirmed, or in progress; queues an in-app and native push notification for the other participant. |

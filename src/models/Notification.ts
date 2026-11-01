@@ -22,7 +22,7 @@ export const NotificationSchema = new Schema(
       required: true,
       enum: [
         "booking_request_received", "booking_offer_accepted", "booking_offer_closed",
-        "booking_confirmed", "booking_cancelled", "booking_started", "booking_completed", "booking_update",
+        "booking_confirmed", "booking_cancelled", "booking_started", "booking_completed", "booking_update", "chat_message",
         "payment_success", "payment_failed", "refund_updated", "application_status",
         "payout_status", "review_received", "system_message",
       ],
