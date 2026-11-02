@@ -1,188 +1,657 @@
-# Styler API Reference
+Styler API Reference
+A 10-Minute Fashion Professional Matching and Booking Platform
 
-This reference covers the Next.js Route Handlers under `src/app/api`. The API is same-origin and returns a JSON envelope:
+Styler API is the centralized backend interface powering the Styler web platform and companion Expo mobile application.
 
-```json
-{ "success": true, "data": {}, "requestId": "..." }
-```
+It manages authentication, professional discovery, booking requests, matching, payments, customer and professional operations, notifications, and marketplace administration.
 
-Errors use `{ "success": false, "error": { "code": "...", "message": "...", "details": {} }, "requestId": "..." }`.
-Authenticated web requests use the secure HTTP-only session cookie. Mobile authentication is described in the README; never put session tokens in ordinary browser storage. Paginated list endpoints generally accept `page` (1-based) and `limit` (maximum 100).
+<div align="center">
 
-**Role legend:** Public = no login; Authenticated = any signed-in role; Customer / Professional / Admin = that role only; Owner-scoped = role and ownership are checked by the handler; Cron = `Authorization: Bearer <CRON_SECRET>`; Razorpay = provider signature verification.
+![API](https://img.shields.io/badge/API-REST-blue) ![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript) ![Database](https://img.shields.io/badge/Database-MongoDB-47A248?logo=mongodb)
 
-## Health, public discovery, and shared services
+</div>
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/health` | Public | Check application and database health. |
-| POST | `/api/contact` | Public | Submit a contact/support message; validated and rate-limited. |
-| GET | `/api/professionals` | Public | Search approved professional profiles; supports category, city, and text filters. |
-| GET | `/api/professionals/[slug]` | Public | Fetch a public professional profile and its public service/review data. |
-| GET | `/api/services` | Public | List active services offered by approved professionals; supports category/search filters. |
-| GET | `/api/services/[serviceId]` | Public | Fetch an active public service. |
-| GET | `/api/reviews` | Public | List published reviews; optionally filter by professional. |
-| POST | `/api/location/reverse-geocode` | Customer / Professional | Convert coordinates to a normalized address through the server-side geocoding proxy. |
+📌 API Overview
+Property	Details
+API Name	Styler REST API
+Product	Styler
+API Type	RESTful JSON API
+Backend Framework	Next.js 15 Route Handlers
+Language	TypeScript
+Database	MongoDB
+Authentication	Session-based authentication
+Payment Integration	Razorpay
+API Base URL	https://styler-web.vercel.app/api
+Frontend URL	https://styler-web.vercel.app
+API Documentation	This document
+🌐 Live Platform
+Web Application: https://styler-web.vercel.app
+API Base URL: https://styler-web.vercel.app/api
 
-## Scheduled jobs
+The web application and API are hosted under the same origin.
 
-These endpoints require the configured cron authorization secret. Both GET and POST are supported for scheduler compatibility.
+📊 API Statistics
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET, POST | `/api/cron/expire-offers` | Cron | Expire outstanding offers and requests past their deadlines. |
-| GET, POST | `/api/cron/expire-payment-holds` | Cron | Remove legacy payment deadlines while preserving accepted booking slots until payment or cancellation. |
-| GET, POST | `/api/cron/retry-matching-requests` | Cron | Retry offer dispatch for requests still in matching state. |
-| GET, POST | `/api/cron/retry-notifications` | Cron | Retry queued/failed email, browser-push and native mobile-push deliveries with bounded concurrency. Native push is attempted immediately when the notification is created. |
-| GET, POST | `/api/cron/reconcile-payouts` | Cron | Reconcile payouts missing after completed bookings and release account-verification holds when eligible. |
+The following statistics are based on the supplied implementation inventory.
 
-## Authentication
+Metric	Count
+Unique API Endpoint Paths	95
+Total HTTP Method Operations	120
+GET Requests	53
+POST Requests	41
+PATCH Requests	19
+PUT Requests	1
+DELETE Requests	6
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| POST | `/api/auth/register` | Public | Register a customer or professional and begin email verification. Public registration cannot create admins. |
-| POST | `/api/auth/login` | Public | Authenticate an active account and create a web or mobile session. |
-| POST | `/api/auth/logout` | Authenticated | Revoke the current session and clear its cookie/token. |
-| GET | `/api/auth/me` | Authenticated | Return the current safe user profile and session context. |
-| POST | `/api/auth/refresh` | Authenticated | Refresh the current session when its refresh policy permits. |
-| POST | `/api/auth/verify-email` | Public | Verify an email address using its one-time code. |
-| POST | `/api/auth/resend-otp` | Public | Request another email-verification code; rate-limited. |
-| POST | `/api/auth/forgot-password` | Public | Start a password-reset flow without exposing whether an account exists. |
-| POST | `/api/auth/reset-password` | Public | Reset a password using a valid reset code. |
-| GET | `/api/account/profile` | Customer / Professional | Read the signed-in user's safe account details and notification preferences. |
-| PATCH | `/api/account/profile` | Customer / Professional | Update safe account details and email/browser notification preferences. |
-| POST | `/api/account/change-password` | Customer / Professional | Change the current user's password after verifying the existing password; other sessions are revoked. |
+Counting convention: Each unique route path is counted once. When a route supports multiple HTTP methods, each method is counted as a separate operation. Repeated documentation entries for the reviews and cron endpoints are not counted twice.
 
-## Customer requests, bookings, and payments
+📈 HTTP Method Distribution
+HTTP Method	Operations	Percentage
+GET	53	44.17%
+POST	41	34.17%
+PATCH	19	15.83%
+PUT	1	0.83%
+DELETE	6	5.00%
+Total	120	100%
+📚 Table of Contents
+Getting Started
+API Conventions
+Authentication and Access Control
+HTTP Response Format
+Health and Public APIs
+Authentication APIs
+Customer APIs
+Professional APIs
+Notification and Upload APIs
+Administrator APIs
+Scheduled Jobs
+Payment Webhooks
+Booking Communication APIs
+Security and Operational Notes
+🚀 Getting Started
+Base URL
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/booking-requests` | Customer / Admin | List the signed-in customer's requests, or all requests for admins; optional status filter. |
-| POST | `/api/booking-requests` | Customer | Validate and create a service request, then dispatch matching offers. |
-| GET | `/api/booking-requests/[requestId]` | Customer / Professional / Admin | Read a request subject to owner/offer authorization; professional responses omit the exact address. |
-| PATCH | `/api/booking-requests/[requestId]` | Customer | Cancel the customer's active, unassigned request and close sent offers. |
-| GET | `/api/booking-offers` | Professional | List offers addressed to the approved professional; optional status filter. |
-| POST | `/api/booking-offers/[offerId]/accept` | Professional | Accept an eligible offer; quote-required services include a validated quote. |
-| POST | `/api/booking-offers/[offerId]/reject` | Professional | Reject an offer addressed to the professional. |
-| GET | `/api/bookings` | Customer / Professional / Admin | List bookings scoped to the signed-in customer/professional, or all bookings for admins; optional status filter. |
-| GET | `/api/bookings/[bookingId]` | Owner-scoped / Admin | Fetch booking details. |
-| POST | `/api/bookings/[bookingId]/cancel` | Customer / Professional / Admin | Cancel an eligible booking according to platform cancellation/refund policy. |
-| POST | `/api/bookings/[bookingId]/start` | Professional | Mark the professional's confirmed booking as in progress. |
-| POST | `/api/bookings/[bookingId]/complete` | Professional | Complete an in-progress booking and create payout bookkeeping. |
-| POST | `/api/payments/order` | Customer | Create/reuse a payment order for the customer's accepted booking; its slot remains reserved until payment or cancellation. |
-| POST | `/api/payments/verify` | Customer | Verify checkout payment details and reconcile booking/payment state. |
-| GET | `/api/customer/payments` | Customer | List the customer's payments and payment summary. |
-| POST | `/api/reviews` | Customer | Review the customer's completed booking. |
-| GET | `/api/reviews` | Public | List published reviews; optional professional filter. |
+All API requests should use the following base URL:
 
-## Customer profile and saved data
+text
+https://styler-web.vercel.app/api
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/customer/dashboard` | Customer | Load customer-scoped booking, request, notification, payment summary, and six-month payment trend. |
-| GET | `/api/customer/profile` | Authenticated | Read the signed-in user's safe profile and saved-account settings. |
-| PATCH | `/api/customer/profile` | Customer / Professional | Update permitted customer or professional account fields. |
-| GET | `/api/customer/addresses` | Customer | List saved customer addresses. |
-| POST | `/api/customer/addresses` | Customer | Add a saved address. |
-| PATCH | `/api/customer/addresses/[addressId]` | Customer | Update an address owned by the customer. |
-| DELETE | `/api/customer/addresses/[addressId]` | Customer | Delete an address owned by the customer. |
-| GET | `/api/customer/favorites` | Customer | List the customer's saved professionals. |
-| POST | `/api/customer/favorites` | Customer | Add a professional to favorites. |
-| DELETE | `/api/customer/favorites/[professionalId]` | Customer | Remove a professional from favorites. |
+Example API Request
 
-## Professional portal
+Retrieve the public professional directory:
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/professional/dashboard` | Professional | Load the professional's profile, offers, bookings, payouts, reviews, services, availability, and weekly payout trend. |
-| GET | `/api/professional/application` | Professional | Read the professional application/profile state. |
-| PATCH | `/api/professional/application` | Professional | Update onboarding/profile data, persist a GPS/map service pin, and submit an application (requires a pin for admin review). |
-| PATCH | `/api/professional/public-profile` | Professional | Update the public studio name, description, and profile photo without changing verification data. |
-| GET | `/api/professional/services` | Professional | List the professional's services. |
-| POST | `/api/professional/services` | Professional | Create a service listing, including fixed, starting-from, or quote-required pricing. |
-| PATCH | `/api/professional/services/[serviceId]` | Professional | Update a service owned by the professional. |
-| DELETE | `/api/professional/services/[serviceId]` | Professional | Deactivate/delete a service owned by the professional. |
-| GET | `/api/professional/availability` | Professional | Read weekly schedule, exceptions, and request-acceptance settings. |
-| PUT | `/api/professional/availability` | Professional | Replace availability schedule and request-acceptance settings. |
-| PATCH | `/api/professional/accepting-requests` | Professional | Toggle whether the professional is accepting new requests. |
-| PATCH | `/api/professional/location` | Professional | Update the professional's service-area location and coordinates; city/state/PIN can be supplied from reverse geocoding or corrected manually. |
-| GET | `/api/professional/requests` | Professional | List active matching offers, approximate GPS distance, and request details without the customer's exact pin or street address. |
-| GET | `/api/professional/bookings` | Professional | List bookings assigned to the professional. |
-| GET | `/api/professional/bookings/[bookingId]` | Professional / Owner-scoped | Read details for a booking assigned to the professional. |
-| GET | `/api/professional/earnings` | Professional | Read earnings, commissions, and payout summary. |
-| GET | `/api/professional/payout-account` | Professional | Read the current professional's UPI payout setup and verification status. |
-| PATCH | `/api/professional/payout-account` | Professional | Submit/update an account-holder name and UPI ID for admin review; changed details require re-verification. |
-| GET | `/api/professional/reviews` | Professional | List reviews for the professional. |
+http
+GET https://styler-web.vercel.app/api/professionals
 
-## Notifications and uploads
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/notifications` | Authenticated | List the current user's notifications; supports pagination and `unreadOnly=true`. |
-| PATCH | `/api/notifications/[notificationId]/read` | Authenticated / Owner-scoped | Mark the current user's notification as read. |
-| PATCH | `/api/notifications/read-all` | Authenticated | Mark all unread notifications belonging to the current user as read. |
-| GET | `/api/notifications/push-subscriptions` | Authenticated | Return the configured Web Push public key. |
-| POST | `/api/notifications/push-subscriptions` | Authenticated | Save/update a Web Push subscription for the current user. |
-| DELETE | `/api/notifications/push-subscriptions` | Authenticated | Deactivate the current user's Web Push subscription endpoint. |
-| POST | `/api/notifications/device-tokens` | Customer / Professional | Register an Expo push token for the authenticated physical device. |
-| DELETE | `/api/notifications/device-tokens` | Customer / Professional | Deactivate the authenticated user's Expo push token. |
-| POST | `/api/imagekit/auth` | Customer / Professional | Create a constrained ImageKit upload signature for an allowed upload purpose. |
+Example using JavaScript:
 
-## Admin portal
+javascript
+const response = await fetch(
+  "https://styler-web.vercel.app/api/professionals"
+);
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/admin/dashboard` | Admin | Load platform counts, period-based payment/revenue and booking trends, payout exposure, booking statuses, and recent bookings. |
-| GET | `/api/admin/applications` | Admin | List professional applications for review. |
-| GET | `/api/admin/applications/[id]` | Admin | Read application details and review materials. |
-| POST | `/api/admin/applications/[id]/approve` | Admin | Approve a professional application. |
-| POST | `/api/admin/applications/[id]/reject` | Admin | Reject a professional application with a reason. |
-| POST | `/api/admin/applications/[id]/request-changes` | Admin | Request applicant corrections. |
-| GET | `/api/admin/applications/[id]/documents/[documentId]` | Admin | Authorize access to a private application document. |
-| GET | `/api/admin/users` | Admin | List/search customer and professional accounts; filter by role/status. Admin accounts are excluded. |
-| PATCH | `/api/admin/users/[userId]/suspend` | Admin | Suspend/reactivate a customer or professional account with an audit reason; cannot target admins. |
-| GET | `/api/admin/professionals` | Admin | List professional profiles and account/application statuses. |
-| GET | `/api/admin/professionals/[id]` | Admin | Read a professional profile, services, and recent payouts. |
-| POST | `/api/admin/professionals/[id]/suspend` | Admin | Suspend/reactivate a professional profile and matching availability. |
-| GET | `/api/admin/booking-requests` | Admin | List and filter marketplace booking requests. |
-| PATCH | `/api/admin/booking-requests/[requestId]` | Admin | Cancel an active unassigned request, close offers, and notify the customer. |
-| GET | `/api/admin/bookings` | Admin | List platform bookings. |
-| GET | `/api/admin/payments` | Admin | List and filter platform payment records. |
-| POST | `/api/admin/payments/[paymentId]/refund` | Admin | Request an eligible provider refund with an audit trail. |
-| GET | `/api/admin/payout-accounts` | Admin | List professional payout details; defaults to accounts awaiting verification (`status=pending`). |
-| GET | `/api/admin/payouts` | Admin | List payout records. |
-| POST | `/api/admin/payouts/[payoutId]/process` | Admin | Prepare a manual UPI payout, cancel an unsent preparation, or record the transaction reference after transfer; legacy Razorpay Route payouts remain supported. |
-| PATCH | `/api/admin/payout-accounts/[profileId]/verify` | Admin | Verify/reject/restrict submitted professional payout details; UPI ownership must be checked outside Styler. |
-| GET | `/api/admin/commissions` | Admin | Read commission configuration and overrides. |
-| PATCH | `/api/admin/commissions` | Admin | Update platform commission settings/overrides. |
-| GET | `/api/admin/reports` | Admin | Read booking, payment, and payout reporting summaries. |
-| GET | `/api/admin/settings` | Admin | Read platform operational settings. |
-| PATCH | `/api/admin/settings` | Admin | Update permitted platform operational settings. |
-| GET | `/api/admin/audit-logs` | Admin | Search paginated administrative/system audit entries. |
+const result = await response.json();
 
-## Scheduled jobs and payment provider callbacks
+if (result.success) {
+  console.log(result.data);
+}
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET, POST | `/api/cron/expire-offers` | Cron | Expire offers past their response deadline. |
-| GET, POST | `/api/cron/expire-payment-holds` | Cron | Remove legacy payment deadlines while preserving accepted booking slots until payment or cancellation. |
-| GET, POST | `/api/cron/retry-matching-requests` | Cron | Retry persisted requests that remain in matching state. |
-| GET, POST | `/api/cron/retry-notifications` | Cron | Retry queued/failed notification deliveries. |
-| POST | `/api/webhooks/razorpay` | Razorpay | Verify Razorpay webhook signature and reconcile provider events idempotently. |
 
-## Operational notes
+For authenticated endpoints, provide the appropriate session credentials using the authentication mechanism supported by the client.
 
-- Admin account suspension is intentionally unavailable through the user-management API; administrators can only moderate customer and professional accounts.
-- Professional notifications use the same authenticated notification feed and per-user read state as customer notifications. Browser Web Push is optional and requires VAPID configuration; native push requires an Expo project and platform credentials.
-- Request/offer refresh in the portals is periodic polling, not instantaneous server push.
-- Cron routes require a configured secret and must be invoked by an external scheduler in production.
-- Provider-backed payment, refund, payout, email, upload, and geocoding behavior still requires valid staging credentials and end-to-end verification.
+📖 API Conventions
+HTTP Methods
+Method	Usage
+GET	Retrieve information or resources.
+POST	Create resources or perform actions.
+PATCH	Partially update existing resources.
+PUT	Replace a resource or configuration.
+DELETE	Remove or deactivate resources.
+Request and Response Format
 
-## Contact inbox and accepted-booking chat
+The API uses JSON for structured request and response data.
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/admin/contact-messages` | Admin | List public contact-form submissions; optional status filter. |
-| PATCH | `/api/admin/contact-messages/[messageId]` | Admin | Move a contact submission through new, in-progress, or resolved states. |
-| GET | `/api/bookings/[bookingId]/messages` | Booking customer / assigned professional | Read the latest messages for an accepted booking. Exact booking participation is required. |
-| POST | `/api/bookings/[bookingId]/messages` | Booking customer / assigned professional | Send a message while the accepted booking is pending payment, confirmed, or in progress; queues an in-app and native push notification for the other participant. |
+Set the following header when sending JSON request bodies:
+
+http
+Content-Type: application/json
+
+Pagination
+
+Paginated list endpoints generally support:
+
+Parameter	Description	Default
+page	Page number, starting from 1	1
+limit	Number of records per page	Endpoint-dependent, maximum 100
+
+Additional filters depend on the individual endpoint.
+
+Common examples include:
+
+status
+category
+city
+search
+professionalId
+unreadOnly
+
+Only use parameters supported by the relevant endpoint.
+
+🔐 Authentication and Access Control
+
+Styler uses role-aware authentication and authorization to protect user-specific and administrative operations.
+
+Supported Roles
+Role	Description
+Public	No authentication required.
+Authenticated	Any signed-in user.
+Customer	Customer account only.
+Professional	Professional account only.
+Admin	Administrator account only.
+Owner-scoped	Access depends on resource ownership and handler authorization.
+Cron	Requires the configured scheduled-job secret.
+Razorpay	Requires valid provider signature verification.
+Authentication Mechanisms
+
+Web Application
+
+Web authentication uses secure HTTP-only session cookies.
+
+Mobile Application
+
+The Expo mobile application uses its supported session mechanism, with session credentials stored through Expo SecureStore.
+
+Important: Do not store session tokens in ordinary browser storage or expose authentication credentials in client-side logs.
+
+Role-Based Access
+Public registration supports customers and professionals.
+Administrator accounts cannot be created through public registration.
+Customer endpoints are restricted to customer accounts where specified.
+Professional endpoints are restricted to professional accounts where specified.
+Admin endpoints require administrator authorization.
+Owner-scoped endpoints validate access to the associated resource.
+Cron endpoints require the configured CRON_SECRET.
+📦 HTTP Response Format
+
+Styler API responses follow a consistent JSON envelope.
+
+Successful Response
+json
+{
+  "success": true,
+  "data": {},
+  "requestId": "request-id"
+}
+
+Error Response
+json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "A description of the error",
+    "details": {}
+  },
+  "requestId": "request-id"
+}
+
+Response Fields
+Field	Description
+success	Indicates whether the request succeeded.
+data	Returned response data on success.
+error.code	Application-specific error code.
+error.message	Human-readable error description.
+error.details	Additional error information, when available.
+requestId	Identifier associated with the request.
+
+Refer to individual endpoint responses for their actual data structures and validation requirements.
+
+🌍 Health and Public APIs
+
+These endpoints provide public platform information, professional discovery, service browsing, reviews, and shared functionality.
+
+1. Health and Contact
+Method	Endpoint	Access	Description
+GET	/health	Public	Check application and database health.
+POST	/contact	Public	Submit a contact or support message.
+
+The contact endpoint includes validation and rate limiting.
+
+2. Professional Discovery
+Method	Endpoint	Access	Description
+GET	/professionals	Public	Search approved professional profiles.
+GET	/professionals/[slug]	Public	Retrieve a public professional profile, services, and review information.
+
+Supported discovery filters include category, city, and text search.
+
+3. Service Discovery
+Method	Endpoint	Access	Description
+GET	/services	Public	List active services offered by approved professionals.
+GET	/services/[serviceId]	Public	Retrieve an individual active public service.
+4. Reviews
+Method	Endpoint	Access	Description
+GET	/reviews	Public	List published reviews, optionally filtered by professional.
+5. Location Services
+Method	Endpoint	Access	Description
+POST	/location/reverse-geocode	Customer / Professional	Convert coordinates into a normalized address through the server-side geocoding proxy.
+🔑 Authentication APIs
+
+Authentication endpoints manage account registration, login, email verification, password recovery, and user sessions.
+
+Method	Endpoint	Access	Description
+POST	/auth/register	Public	Register a customer or professional and begin email verification.
+POST	/auth/login	Public	Authenticate an active account and create a web or mobile session.
+POST	/auth/logout	Authenticated	Revoke the current session and clear its cookie or token.
+GET	/auth/me	Authenticated	Retrieve the current safe user profile and session context.
+POST	/auth/refresh	Authenticated	Refresh the current session when permitted by its refresh policy.
+POST	/auth/verify-email	Public	Verify an email address using a one-time code.
+POST	/auth/resend-otp	Public	Request another email verification code.
+POST	/auth/forgot-password	Public	Start password recovery without revealing whether an account exists.
+POST	/auth/reset-password	Public	Reset a password using a valid reset code.
+Account Management
+Method	Endpoint	Access	Description
+GET	/account/profile	Customer / Professional	Retrieve safe account information and notification preferences.
+PATCH	/account/profile	Customer / Professional	Update permitted account details and notification preferences.
+POST	/account/change-password	Customer / Professional	Change the current password after verifying the existing password. Other sessions are revoked.
+🛍️ Customer APIs
+
+Customer APIs support service discovery, booking requests, booking management, payments, profile management, saved addresses, favorites, and reviews.
+
+1. Customer Dashboard
+Method	Endpoint	Access	Description
+GET	/customer/dashboard	Customer	Retrieve customer booking, request, notification, and payment summaries, including a six-month payment trend.
+2. Booking Requests
+Method	Endpoint	Access	Description
+GET	/booking-requests	Customer / Admin	List the customer's requests or all requests for administrators.
+POST	/booking-requests	Customer	Validate and create a service request and dispatch matching offers.
+GET	/booking-requests/[requestId]	Customer / Professional / Admin	Retrieve a request subject to ownership or offer authorization.
+PATCH	/booking-requests/[requestId]	Customer	Cancel an active, unassigned request and close sent offers.
+
+Privacy note: Professional responses to booking requests omit the customer's exact address.
+
+3. Booking Offers
+Method	Endpoint	Access	Description
+GET	/booking-offers	Professional	List offers addressed to the approved professional.
+POST	/booking-offers/[offerId]/accept	Professional	Accept an eligible booking offer and submit a validated quote when required.
+POST	/booking-offers/[offerId]/reject	Professional	Reject an offer addressed to the professional.
+4. Bookings
+Method	Endpoint	Access	Description
+GET	/bookings	Customer / Professional / Admin	List bookings according to the signed-in user's role.
+GET	/bookings/[bookingId]	Owner-scoped / Admin	Retrieve booking details.
+POST	/bookings/[bookingId]/cancel	Customer / Professional / Admin	Cancel an eligible booking according to the platform cancellation and refund policy.
+POST	/bookings/[bookingId]/start	Professional	Mark a confirmed professional booking as in progress.
+POST	/bookings/[bookingId]/complete	Professional	Complete an in-progress booking and create payout bookkeeping.
+
+Booking lists support optional status filters.
+
+5. Customer Payments
+Method	Endpoint	Access	Description
+POST	/payments/order	Customer	Create or reuse a payment order for an accepted booking.
+POST	/payments/verify	Customer	Verify checkout payment information and reconcile booking/payment state.
+GET	/customer/payments	Customer	Retrieve customer payment records and payment summary.
+
+An accepted booking slot remains reserved until payment or cancellation according to the implemented payment workflow.
+
+6. Customer Reviews
+Method	Endpoint	Access	Description
+POST	/reviews	Customer	Submit a review for an eligible completed booking.
+
+Published reviews are publicly available through GET /reviews.
+
+7. Customer Profile
+Method	Endpoint	Access	Description
+GET	/customer/profile	Authenticated	Retrieve the signed-in user's safe profile and saved account settings.
+PATCH	/customer/profile	Customer / Professional	Update permitted customer or professional account fields.
+POST	/customer/change-password	Customer / Professional	Change the current password after verifying the existing password; revoke other active sessions.
+
+The password-change operation is also available through /account/change-password.
+
+8. Saved Addresses
+Method	Endpoint	Access	Description
+GET	/customer/addresses	Customer	List saved customer addresses.
+POST	/customer/addresses	Customer	Add a saved address.
+PATCH	/customer/addresses/[addressId]	Customer	Update an address owned by the customer.
+DELETE	/customer/addresses/[addressId]	Customer	Delete an address owned by the customer.
+9. Favorite Professionals
+Method	Endpoint	Access	Description
+GET	/customer/favorites	Customer	List saved professionals.
+POST	/customer/favorites	Customer	Add a professional to favorites.
+DELETE	/customer/favorites/[professionalId]	Customer	Remove a professional from favorites.
+✂️ Professional APIs
+
+Professional APIs support onboarding, profile management, services, availability, booking offers, booking operations, location sharing, earnings, and payouts.
+
+1. Professional Dashboard
+Method	Endpoint	Access	Description
+GET	/professional/dashboard	Professional	Retrieve profile, offers, bookings, payouts, reviews, services, availability, and weekly payout trends.
+2. Professional Onboarding
+Method	Endpoint	Access	Description
+GET	/professional/application	Professional	Retrieve professional application and profile status.
+PATCH	/professional/application	Professional	Update onboarding information, service-location pin, and application details.
+PATCH	/professional/public-profile	Professional	Update public studio name, description, and profile photo without changing verification data.
+
+Submitting an application requires a location pin for administrator review.
+
+3. Professional Services
+Method	Endpoint	Access	Description
+GET	/professional/services	Professional	List the professional's services.
+POST	/professional/services	Professional	Create a service listing with fixed, starting-from, or quote-required pricing.
+PATCH	/professional/services/[serviceId]	Professional	Update a service owned by the professional.
+DELETE	/professional/services/[serviceId]	Professional	Deactivate or delete a service owned by the professional.
+4. Availability Management
+Method	Endpoint	Access	Description
+GET	/professional/availability	Professional	Retrieve weekly schedules, exceptions, and request-acceptance settings.
+PUT	/professional/availability	Professional	Replace the availability schedule and request-acceptance settings.
+PATCH	/professional/accepting-requests	Professional	Enable or disable acceptance of new booking requests.
+5. Professional Location
+Method	Endpoint	Access	Description
+PATCH	/professional/location	Professional	Update service-area location and coordinates.
+
+City, state, and PIN information may be supplied through reverse geocoding or corrected manually.
+
+6. Matching Requests
+Method	Endpoint	Access	Description
+GET	/professional/requests	Professional	List active matching offers, approximate GPS distance, and request information.
+
+Professional request responses do not expose the customer's exact location pin or street address.
+
+7. Professional Bookings
+Method	Endpoint	Access	Description
+GET	/professional/bookings	Professional	List bookings assigned to the professional.
+GET	/professional/bookings/[bookingId]	Professional / Owner-scoped	Retrieve details of an assigned booking.
+PATCH	/professional/bookings/[bookingId]/location	Professional	Share current coordinates for a confirmed or in-progress booking.
+DELETE	/professional/bookings/[bookingId]/location	Professional	Stop location sharing and remove stored live-location history for that booking.
+POST	/professional/bookings/[bookingId]/updates	Professional	Send a booking or arrival update, optionally including an ETA.
+8. Professional Earnings
+Method	Endpoint	Access	Description
+GET	/professional/earnings	Professional	Retrieve earnings, commissions, and payout summary.
+9. Professional Payout Account
+Method	Endpoint	Access	Description
+GET	/professional/payout-account	Professional	Retrieve UPI payout setup and verification status.
+PATCH	/professional/payout-account	Professional	Submit or update account-holder name and UPI ID for administrator review.
+
+Changed payout details require re-verification.
+
+10. Professional Reviews
+Method	Endpoint	Access	Description
+GET	/professional/reviews	Professional	Retrieve reviews associated with the professional.
+🔔 Notification and Upload APIs
+
+These endpoints manage notification feeds, read states, browser push subscriptions, native device tokens, media uploads, and receipts.
+
+1. Notification Feed
+Method	Endpoint	Access	Description
+GET	/notifications	Authenticated	List notifications for the current user with pagination and optional unread filtering.
+PATCH	/notifications/[notificationId]/read	Authenticated / Owner-scoped	Mark an owned notification as read.
+PATCH	/notifications/read-all	Authenticated	Mark all unread notifications belonging to the current user as read.
+2. Web Push Subscriptions
+Method	Endpoint	Access	Description
+GET	/notifications/push-subscriptions	Authenticated	Retrieve the configured Web Push public key.
+POST	/notifications/push-subscriptions	Authenticated	Save or update the current user's Web Push subscription.
+DELETE	/notifications/push-subscriptions	Authenticated	Deactivate the current user's Web Push subscription endpoint.
+3. Mobile Device Tokens
+Method	Endpoint	Access	Description
+POST	/notifications/device-tokens	Customer / Professional	Register an Expo push token for an authenticated physical device.
+DELETE	/notifications/device-tokens	Customer / Professional	Deactivate the authenticated user's Expo push token.
+4. Media Upload Authorization
+Method	Endpoint	Access	Description
+POST	/imagekit/auth	Customer / Professional	Generate a constrained ImageKit upload signature for an allowed upload purpose.
+5. Payment and Payout Receipts
+Method	Endpoint	Access	Description
+GET	/receipts/[receiptType]/[recordId]	Customer / Professional	Retrieve an owned captured-payment receipt or completed payout receipt.
+
+Supported receipt types:
+
+payment
+payout
+
+HTML is returned by default. Payment receipts can return JSON using:
+
+http
+GET /api/receipts/payment/RECORD_ID?format=json
+
+
+An Accept: application/json header can also request JSON for payment receipts.
+
+🛡️ Administrator APIs
+
+Administrator endpoints provide protected tools for managing users, professional applications, bookings, payments, payouts, commissions, reports, settings, and marketplace activity.
+
+All endpoints in this section require Admin access.
+
+1. Admin Dashboard
+Method	Endpoint	Access	Description
+GET	/admin/dashboard	Admin	Retrieve platform counts, payment/revenue trends, booking trends, payout exposure, booking statuses, and recent bookings.
+2. Professional Application Management
+Method	Endpoint	Access	Description
+GET	/admin/applications	Admin	List professional applications for review.
+GET	/admin/applications/[id]	Admin	Retrieve application details and review materials.
+POST	/admin/applications/[id]/approve	Admin	Approve a professional application.
+POST	/admin/applications/[id]/reject	Admin	Reject an application with a reason.
+POST	/admin/applications/[id]/request-changes	Admin	Request corrections from an applicant.
+GET	/admin/applications/[id]/documents/[documentId]	Admin	Authorize access to a private application document.
+3. User Management
+Method	Endpoint	Access	Description
+GET	/admin/users	Admin	Search and list customer and professional accounts by role or status.
+PATCH	/admin/users/[userId]/suspend	Admin	Suspend or reactivate a customer or professional account with an audit reason.
+
+Administrator accounts are excluded from the user-management listing and cannot be targeted through this suspension endpoint.
+
+4. Professional Management
+Method	Endpoint	Access	Description
+GET	/admin/professionals	Admin	List professional profiles and application/account statuses.
+GET	/admin/professionals/[id]	Admin	Retrieve professional profile, services, and recent payouts.
+POST	/admin/professionals/[id]/suspend	Admin	Suspend or reactivate a professional profile and matching availability.
+5. Booking Request Management
+Method	Endpoint	Access	Description
+GET	/admin/booking-requests	Admin	List and filter marketplace booking requests.
+PATCH	/admin/booking-requests/[requestId]	Admin	Cancel an active unassigned request, close offers, and notify the customer.
+6. Booking Management
+Method	Endpoint	Access	Description
+GET	/admin/bookings	Admin	List platform bookings.
+7. Payment and Refund Management
+Method	Endpoint	Access	Description
+GET	/admin/payments	Admin	List and filter platform payment records.
+POST	/admin/payments/[paymentId]/refund	Admin	Request an eligible provider refund with an audit trail.
+8. Payout Account Management
+Method	Endpoint	Access	Description
+GET	/admin/payout-accounts	Admin	List professional payout accounts, defaulting to accounts awaiting verification.
+PATCH	/admin/payout-accounts/[profileId]/verify	Admin	Verify, reject, or restrict submitted professional payout details.
+
+The default payout account filter is:
+
+text
+status=pending
+
+
+UPI account ownership must be checked outside the application.
+
+9. Payout Management
+Method	Endpoint	Access	Description
+GET	/admin/payouts	Admin	List payout records.
+POST	/admin/payouts/[payoutId]/process	Admin	Prepare a manual UPI payout, cancel an unsent preparation, or record a transaction reference after transfer.
+
+Legacy Razorpay Route payout support remains available.
+
+10. Commission Management
+Method	Endpoint	Access	Description
+GET	/admin/commissions	Admin	Retrieve commission configuration and overrides.
+PATCH	/admin/commissions	Admin	Update platform commission settings and overrides.
+11. Reports and Analytics
+Method	Endpoint	Access	Description
+GET	/admin/reports	Admin	Retrieve booking, payment, and payout reporting summaries.
+12. Platform Settings
+Method	Endpoint	Access	Description
+GET	/admin/settings	Admin	Retrieve platform operational settings.
+PATCH	/admin/settings	Admin	Update permitted platform operational settings.
+13. Audit Logs
+Method	Endpoint	Access	Description
+GET	/admin/audit-logs	Admin	Search and retrieve paginated administrative and system audit entries.
+14. Contact Message Management
+Method	Endpoint	Access	Description
+GET	/admin/contact-messages	Admin	List contact-form submissions with optional status filtering.
+PATCH	/admin/contact-messages/[messageId]	Admin	Update a contact submission through new, in-progress, or resolved states.
+⏱️ Scheduled Jobs
+
+Styler includes scheduled API operations for maintaining booking, matching, payment-hold, notification, and payout workflows.
+
+These routes support both GET and POST for scheduler compatibility.
+
+All scheduled-job requests require:
+
+http
+Authorization: Bearer YOUR_CRON_SECRET
+
+Cron Endpoints
+Method	Endpoint	Access	Description
+GET, POST	/cron/expire-offers	Cron	Expire outstanding offers and requests past their deadlines.
+GET, POST	/cron/expire-payment-holds	Cron	Remove legacy payment deadlines while preserving accepted booking slots until payment or cancellation.
+GET, POST	/cron/retry-matching-requests	Cron	Retry offer dispatch for requests that remain in matching state.
+GET, POST	/cron/retry-notifications	Cron	Retry queued or failed email, browser-push, and native mobile-push deliveries with bounded concurrency.
+GET, POST	/cron/reconcile-payouts	Cron	Reconcile missing payouts after completed bookings and release eligible account-verification holds.
+Notification Delivery Behaviour
+
+Native push delivery is attempted immediately when a notification is created.
+
+The retry job handles queued or failed deliveries where retry is applicable.
+
+Production Scheduling
+
+An external scheduler must invoke the scheduled-job endpoints with the configured authorization secret.
+
+The checked-in deployment configuration currently schedules five jobs daily at two-minute intervals, beginning at 00:00 UTC.
+
+Verify that the configured cadence meets the operational requirements of the deployed platform.
+
+💳 Payment Webhooks
+
+Styler supports Razorpay webhooks for receiving payment provider events and reconciling payment information.
+
+Method	Endpoint	Access	Description
+POST	/webhooks/razorpay	Razorpay	Verify the Razorpay webhook signature and reconcile provider events idempotently.
+Webhook Security
+Configure the correct Razorpay webhook secret.
+Verify provider signatures before processing events.
+Use the configured webhook URL in the Razorpay dashboard.
+Test payment and refund event handling with provider test credentials.
+Verify reconciliation behaviour before production launch.
+
+Webhook processing is designed to handle provider events idempotently.
+
+💬 Booking Communication APIs
+
+These endpoints provide messaging between a customer and the professional assigned to an accepted booking.
+
+Access is restricted to the customer and assigned professional participating in the booking.
+
+Method	Endpoint	Access	Description
+GET	/bookings/[bookingId]/messages	Booking customer / Assigned professional	Retrieve the latest messages for an accepted booking.
+POST	/bookings/[bookingId]/messages	Booking customer / Assigned professional	Send a booking message while the booking is pending payment, confirmed, or in progress.
+
+New messages queue in-app and native push notifications for the other booking participant.
+
+Communication Restrictions
+Only the booking customer and assigned professional can access the conversation.
+Exact booking participation is required.
+Messaging is limited to supported active booking states.
+Notification delivery is handled through the platform notification system.
+🔒 Security and Operational Notes
+
+The Styler API includes role-based authorization, ownership checks, protected sessions, and provider integration controls.
+
+The following operational details are important for developers integrating with the API.
+
+1. Account and Role Restrictions
+Public registration supports customer and professional accounts only.
+Administrator accounts cannot be created through public registration.
+Admin account provisioning must be performed through a trusted, access-controlled process.
+The user-management API cannot suspend administrator accounts.
+2. Customer Location Privacy
+Professional matching responses do not expose the customer's exact address.
+Professional request responses provide approximate GPS distance.
+Exact booking access is controlled by the relevant ownership and authorization checks.
+3. Session Security
+Web sessions use secure HTTP-only cookies.
+Mobile session credentials are stored using Expo SecureStore.
+Password changes revoke other active sessions.
+Protected endpoints require valid authentication and appropriate authorization.
+4. Payment and Payout Security
+Razorpay webhook signatures must be verified.
+Payment and refund operations require valid provider credentials.
+Manual payout account ownership must be verified outside Styler.
+Administrative payout operations should follow appropriate verification procedures.
+5. Notification Delivery
+In-app notifications are available through the authenticated notification feed.
+Web Push is optional and requires VAPID configuration.
+Native push requires an Expo project and appropriate platform credentials.
+Professional and customer notifications use the same notification feed and per-user read state.
+6. Matching and Updates
+Booking offer dispatch is managed by the server-side matching workflow.
+Request and offer refresh in the web and mobile portals uses periodic polling.
+The portal refresh mechanism is not instantaneous server push.
+7. External Integrations
+
+The following operations require valid provider configuration and end-to-end verification:
+
+Payment processing and refunds.
+Payout operations.
+Email delivery.
+Image uploads.
+Reverse geocoding.
+Browser and native push notifications.
+8. Database Requirements
+
+Booking and payment workflows use database transactions.
+
+Use a MongoDB deployment that supports transactions, such as a replica set or compatible managed cluster.
+
+🧩 API Development Notes
+
+The Styler API is implemented using Next.js Route Handlers.
+
+Useful source locations:
+
+Directory	Responsibility
+src/app/api/	API route handlers
+src/models/	MongoDB and Mongoose models
+src/lib/	Shared server-side business logic
+src/app/api/auth/	Authentication endpoints
+src/app/api/customer/	Customer endpoints
+src/app/api/professional/	Professional endpoints
+src/app/api/admin/	Administrator endpoints
+src/app/api/cron/	Scheduled operations
+src/app/api/webhooks/	External provider webhooks
+Keeping This Documentation Updated
+
+This API reference represents the supplied route-handler inventory.
+
+Whenever an API route or HTTP method changes:
+
+Update the corresponding endpoint entry.
+Verify the access requirements.
+Update the endpoint description.
+Recalculate the API statistics.
+Review any affected web and mobile integrations.
+Update this document when request or response behaviour changes.
+🔗 Related Resources
+Resource	Link
+Styler Web Application	https://styler-web.vercel.app
+Styler API Base URL	https://styler-web.vercel.app/api
+Main Project Documentation	README.md
+Web Environment Example	.env.example
+Mobile Application	styler-mobile/
+
+<div align="center">
+
+✨ Styler API
+
+Powering the Styler Marketplace Ecosystem
+
+A shared backend connecting customers, fashion professionals, and administrators through one unified platform.
+
+Web Application · API Base URL
+
+Built with Next.js, TypeScript, and MongoDB.
+
+</div>
