@@ -537,15 +537,25 @@ An `Accept: application/json` header also requests JSON for payment receipts.
 
 All endpoints in this section require administrator authorization.
 
-The administrator dashboard provides operational control over customers, professionals, applications, bookings, payments, payouts, commissions, reports, and platform settings.
+The administrator dashboard provides operational control over customers, professionals, service categories, applications, bookings, payments, payouts, commissions, reports, and platform settings.
 
-## 1. Admin Dashboard
+## 1. Service Category Management
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/service-categories` | Public | List active categories used by web and mobile clients. |
+| GET | `/admin/service-categories` | Admin | List active and inactive categories. |
+| POST | `/admin/service-categories` | Admin | Create a category; its stable slug is generated from its name. |
+| PATCH | `/admin/service-categories/[categoryId]` | Admin | Edit category details or activate/deactivate it. |
+| DELETE | `/admin/service-categories/[categoryId]` | Admin | Permanently delete an unused category. Categories in use must be deactivated instead. |
+
+## 2. Admin Dashboard
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | GET | `/admin/dashboard` | Admin | Retrieve platform counts, payment and revenue trends, booking trends, payout exposure, booking statuses, and recent bookings. |
 
-## 2. Professional Application Management
+## 3. Professional Application Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
@@ -556,7 +566,7 @@ The administrator dashboard provides operational control over customers, profess
 | POST | `/admin/applications/[id]/request-changes` | Admin | Request applicant corrections. |
 | GET | `/admin/applications/[id]/documents/[documentId]` | Admin | Authorize access to a private application document. |
 
-## 3. Customer and User Management
+## 4. Customer and User Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
@@ -569,7 +579,7 @@ The administrator dashboard provides operational control over customers, profess
 - Administrator accounts cannot be targeted through this suspension endpoint.
 - User management is restricted to authorized administrators.
 
-## 4. Professional Management
+## 5. Professional Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
@@ -577,27 +587,27 @@ The administrator dashboard provides operational control over customers, profess
 | GET | `/admin/professionals/[id]` | Admin | Retrieve professional profile, services, and recent payouts. |
 | POST | `/admin/professionals/[id]/suspend` | Admin | Suspend or reactivate a professional profile and matching availability. |
 
-## 5. Booking Request Management
+## 6. Booking Request Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | GET | `/admin/booking-requests` | Admin | List and filter marketplace booking requests. |
 | PATCH | `/admin/booking-requests/[requestId]` | Admin | Cancel an active unassigned request, close offers, and notify the customer. |
 
-## 6. Booking Management
+## 7. Booking Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | GET | `/admin/bookings` | Admin | List platform bookings. |
 
-## 7. Payment and Refund Management
+## 8. Payment and Refund Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | GET | `/admin/payments` | Admin | List and filter platform payment records. |
 | POST | `/admin/payments/[paymentId]/refund` | Admin | Request an eligible provider refund with an audit trail. |
 
-## 8. Payout Account Management
+## 9. Payout Account Management
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
