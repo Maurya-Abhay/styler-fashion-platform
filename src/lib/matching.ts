@@ -351,13 +351,52 @@ export async function dispatchOffersForRequest(requestId: string) {
   }
 
   const delivery = await Promise.allSettled(createdOffers.map(async (offer) => {
-    const profile = candidates.find((candidate) => String(candidate.profile._id) === String(offer.professionalId))?.profile;
-    if (!profile) return;
+    const candidate = candidates.find((item) => String(item.profile._id) === String(offer.professionalId));
+    if (!candidate) return;
+    const profile = candidate.profile;
+    const requestAddress = request.addressSnapshot;
+    const formatDate = (date: Date) => new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(date);
+    const formatTime = (date: Date) => new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+    const formatMoney = (paise: number) => new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(paise / 100);
+    const budget = request.budgetMinPaise == null && request.budgetMaxPaise == null
+      ? "Not specified"
+      : `${request.budgetMinPaise == null ? "" : formatMoney(request.budgetMinPaise)}${request.budgetMinPaise != null && request.budgetMaxPaise != null ? "–" : ""}${request.budgetMaxPaise == null ? "" : formatMoney(request.budgetMaxPaise)}`;
+    const serviceTitle = String(candidate.service.title || request.serviceCategory.replaceAll("_", " "));
+    const area = [requestAddress?.city, requestAddress?.state].filter(Boolean).join(", ");
+    const details = [
+      `${formatDate(candidate.startAt)} · ${formatTime(candidate.startAt)}–${formatTime(candidate.endAt)}`,
+      `${area || "Area not specified"} · ${candidate.service.durationMinutes} min · Budget ${budget}`,
+      `Respond by ${formatDate(deadline)} · ${formatTime(deadline)}`,
+    ];
     await notifyUser({
-      recipientUserId: String(profile.userId), type: "booking_request_received", title: "New Styler booking request",
-      message: `A customer request matches your ${request.serviceCategory.replaceAll("_", " ")} service. Open Styler to review the time and price and accept or reject it.`,
+      recipientUserId: String(profile.userId), type: "booking_request_received",
+      title: `New request · ${serviceTitle}`,
+      message: details.join("\n"),
       channels: ["in_app", "email", "web_push"],
-      data: { requestId: String(request._id), offerId: String(offer._id), expiresAt: deadline.toISOString() },
+      data: {
+        requestId: String(request._id),
+        offerId: String(offer._id),
+        expiresAt: deadline.toISOString(),
+        serviceTitle,
+        proposedStartAt: candidate.startAt.toISOString(),
+        proposedEndAt: candidate.endAt.toISOString(),
+        area,
+        budget,
+        requiresQuote: candidate.service.pricingType === "quote_required",
+      },
       dedupeKey: `booking-offer:${String(offer._id)}`,
     });
   }));

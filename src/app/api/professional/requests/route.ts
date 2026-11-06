@@ -4,7 +4,7 @@ import BookingRequest from "@/models/BookingRequest";
 import Availability from "@/models/Availability";
 import Service from "@/models/Service";
 import { distanceInKilometres } from "@/lib/location";
-import { currentUser, paginationFromRequest, withApi } from "@/lib/api-utils";
+import { currentUser, paginationFromRequest, requireId, withApi } from "@/lib/api-utils";
 import { AppError } from "@/types";
 export const GET = withApi(async (request) => {
   const auth = await currentUser(request, ["professional"]);
@@ -16,7 +16,15 @@ export const GET = withApi(async (request) => {
     throw new AppError("Your professional application must be approved first.", 403, "PROFESSIONAL_NOT_APPROVED");
   }
   const { page, limit, skip } = paginationFromRequest(request);
-  const filter = { professionalId: profile._id, status: "sent", expiresAt: { $gt: new Date() } };
+  const url = new URL(request.url);
+  const offerId = url.searchParams.get("offerId");
+  if (offerId) requireId(offerId, "offerId");
+  const filter: Record<string, unknown> = {
+    professionalId: profile._id,
+    status: "sent",
+    expiresAt: { $gt: new Date() },
+  };
+  if (offerId) filter._id = offerId;
   const [offers, total, availability, activeServiceCount] = await Promise.all([
     BookingOffer.find(filter)
       .populate({ path: "serviceId", select: "title pricingType pricePaise" })

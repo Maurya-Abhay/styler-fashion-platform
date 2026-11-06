@@ -161,6 +161,11 @@ async function deliverClaimedNotification(input: {
         title: note.title,
         body: note.message,
         data: { ...((note.data ?? {}) as Record<string, unknown>), notificationId: String(note._id) },
+        ...(note.type === "booking_request_received" ? {
+          categoryId: (note.data as Record<string, unknown> | undefined)?.requiresQuote
+            ? "styler-booking-offer-quote"
+            : "styler-booking-offer",
+        } : {}),
       });
       if (result.skipped) {
         status = "skipped";

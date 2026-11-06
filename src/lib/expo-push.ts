@@ -8,6 +8,7 @@ export async function sendExpoPushToUser(input: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  categoryId?: string;
 }) {
   const devices = await DeviceToken.find({ userId: input.userId, isActive: true })
     .select("_id expoPushToken")
@@ -27,6 +28,7 @@ export async function sendExpoPushToUser(input: {
       priority: "high",
       ttl: 60 * 60,
       data: input.data ?? {},
+      ...(input.categoryId ? { categoryId: input.categoryId } : {}),
     }));
 
     const response = await fetch(EXPO_PUSH_URL, {
