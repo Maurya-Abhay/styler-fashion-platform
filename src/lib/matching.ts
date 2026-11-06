@@ -87,7 +87,7 @@ async function findMatchingServicesAndProfessionals(request: any): Promise<Match
   const profiles = await ProfessionalProfile.find({
     _id: { $in: [...new Set(services.map((service: any) => String(service.professionalId)))] },
     applicationStatus: "approved",
-  }).select("_id userId city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
+  }).select("_id userId applicationStatus city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
   if (!profiles.length) return { services: [], profiles: [], stage: "no_approved_professional" };
 
   const users = await User.find({
