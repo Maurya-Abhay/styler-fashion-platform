@@ -601,6 +601,7 @@ export function BookingRequestForm() {
         id,
         offersCreated: result?.matching?.offersCreated ?? request?.offersSentCount ?? 0,
         status: result?.matching?.status || request?.status || "matching",
+        noMatchReason: request?.noMatchReason,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit request.");
@@ -626,7 +627,9 @@ export function BookingRequestForm() {
           <div>
             <h2 className="text-2xl font-bold text-styler-ink">Request shared successfully</h2>
             <p className="mt-2 text-sm leading-relaxed text-styler-muted">
-              We&apos;re matching your request with approved professionals. You can follow responses and offers from your bookings.
+              {submitted.status === "no_match"
+                ? "No suitable professional matched this request. Review the reason below and adjust the request if needed."
+                : "We're matching your request with approved professionals. You can follow responses and offers from your bookings."}
             </p>
           </div>
           <div className="rounded-panel border border-styler-line bg-styler-canvas p-4 text-left">
@@ -635,7 +638,9 @@ export function BookingRequestForm() {
             <p className="mt-2 text-xs text-styler-muted">
               {submitted.offersCreated
                 ? `${submitted.offersCreated} professional offer(s) sent so far.`
-                : "We’ll keep looking for a suitable professional and update your bookings."}
+                : submitted.status === "matching"
+                  ? "We’ll keep looking for a suitable professional and update your bookings."
+                  : submitted.noMatchReason || "No suitable professional matched the selected request details."}
             </p>
             <p className="mt-2 text-xs text-styler-muted">
               {paymentPreference === "when_accepted"

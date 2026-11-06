@@ -55,16 +55,40 @@ export function isEligibleProfessional(profile: any, user: any, request: any): b
     && String(user._id) === String(profile.userId)
     && String(user._id) !== String(request.customerId)
     && profile.applicationStatus === "approved"
-    && profile.categories?.includes(request.serviceCategory),
   );
 }
 
-async function findCategoryProfessionals(request: any): Promise<any[]> {
+export function isBookableServiceForCategory(service: any, category: string): boolean {
+  if (!service?.isActive || service.category !== category) return false;
+  if (service.pricingType === "quote_required") return true;
+  return ["fixed", "starting_from"].includes(service.pricingType)
+    && Number.isFinite(Number(service.pricePaise))
+    && Number(service.pricePaise) >= 1;
+}
+
+type MatchingLookup = {
+  services: any[];
+  profiles: any[];
+  stage: "no_service" | "no_approved_professional" | "no_professional_account" | "matched";
+};
+
+async function findMatchingServicesAndProfessionals(request: any): Promise<MatchingLookup> {
+  const services = (await Service.find({
+    category: request.serviceCategory,
+    isActive: true,
+    $or: [
+      { pricingType: { $in: ["fixed", "starting_from"] }, pricePaise: { $gte: 1 } },
+      { pricingType: "quote_required" },
+    ],
+  }).sort({ createdAt: -1 }).lean()).filter((service: any) =>
+    isBookableServiceForCategory(service, request.serviceCategory));
+  if (!services.length) return { services: [], profiles: [], stage: "no_service" };
+
   const profiles = await ProfessionalProfile.find({
+    _id: { $in: [...new Set(services.map((service: any) => String(service.professionalId)))] },
     applicationStatus: "approved",
-    categories: request.serviceCategory,
-  }).select("_id userId categories city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
-  if (!profiles.length) return [];
+  }).select("_id userId city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
+  if (!profiles.length) return { services: [], profiles: [], stage: "no_approved_professional" };
 
   const users = await User.find({
     _id: { $in: profiles.map((profile: any) => profile.userId), $ne: request.customerId },
@@ -72,8 +96,17 @@ async function findCategoryProfessionals(request: any): Promise<any[]> {
     accountStatus: "active",
   }).select("_id role accountStatus").lean();
   const usersById = new Map(users.map((user: any) => [String(user._id), user]));
-  return profiles.filter((profile: any) =>
+  const eligibleProfiles = profiles.filter((profile: any) =>
     isEligibleProfessional(profile, usersById.get(String(profile.userId)), request));
+  if (!eligibleProfiles.length) {
+    return { services: [], profiles: [], stage: "no_professional_account" };
+  }
+  const eligibleProfileIds = new Set(eligibleProfiles.map((profile: any) => String(profile._id)));
+  return {
+    services: services.filter((service: any) => eligibleProfileIds.has(String(service.professionalId))),
+    profiles: eligibleProfiles,
+    stage: "matched",
+  };
 }
 
 export interface MatchCandidate {
@@ -87,7 +120,9 @@ export interface MatchCandidate {
 export async function findMatchingProfessionals(requestId: string): Promise<MatchCandidate[]> {
   const request = await BookingRequest.findById(requestId).lean();
   if (!request) throw new AppError("Booking request not found.", 404, "REQUEST_NOT_FOUND");
-  const profiles = await findCategoryProfessionals(request);
+  const matching = await findMatchingServicesAndProfessionals(request);
+  if (matching.stage !== "matched") return [];
+  const { services, profiles } = matching;
   if (!profiles.length) return [];
   const locationMatches = profiles.filter((profile: any) => servesWithinRadius(profile, request));
   if (!locationMatches.length) return [];
@@ -114,21 +149,15 @@ export async function findMatchingProfessionals(requestId: string): Promise<Matc
     ]),
   );
   const profileIds = locationMatches.map((profile: any) => profile._id);
-  const [services, availabilityDocs, settings] = await Promise.all([
-    Service.find({
-      professionalId: { $in: profileIds },
-      category: request.serviceCategory,
-      isActive: true,
-      $or: [
-        { pricingType: { $in: ["fixed", "starting_from"] }, pricePaise: { $gte: 1 } },
-        { pricingType: "quote_required" },
-      ],
-    }).sort({ createdAt: -1 }).lean(),
+  const locationProfileIds = new Set(profileIds.map((id: unknown) => String(id)));
+  const locationServices = services.filter((service: any) =>
+    locationProfileIds.has(String(service.professionalId)));
+  const [availabilityDocs, settings] = await Promise.all([
     Availability.find({ professionalId: { $in: profileIds }, acceptingRequests: true }).lean(),
     getPlatformSettings(),
   ]);
   if (requestCoordinates) {
-    services.sort((a: any, b: any) =>
+    locationServices.sort((a: any, b: any) =>
       (profilePriority.get(String(a.professionalId)) ?? Number.MAX_SAFE_INTEGER)
       - (profilePriority.get(String(b.professionalId)) ?? Number.MAX_SAFE_INTEGER),
     );
@@ -143,7 +172,7 @@ export async function findMatchingProfessionals(requestId: string): Promise<Matc
   // until one has an available slot rather than letting the newest blocked
   // listing hide another valid service.
   const serviceOptionsByProfessional = new Map<string, any[]>();
-  for (const service of services) {
+  for (const service of locationServices) {
     const professionalId = String(service.professionalId);
     if (!availabilityByProfessional.has(professionalId)) continue;
     const needsQuote = service.pricingType === "quote_required";
@@ -208,12 +237,18 @@ export async function findMatchingProfessionals(requestId: string): Promise<Matc
 }
 
 async function explainNoMatch(request: any): Promise<string> {
-  const categoryProfiles = await findCategoryProfessionals(request);
-  if (!categoryProfiles.length) {
-    return "No active, approved professional currently offers this service category. Try again later or choose another category.";
+  const matching = await findMatchingServicesAndProfessionals(request);
+  if (matching.stage === "no_service") {
+    return "No active professional service listing matches the selected category.";
+  }
+  if (matching.stage === "no_approved_professional") {
+    return "An active service matches this category, but its professional profile is not approved.";
+  }
+  if (matching.stage === "no_professional_account") {
+    return "Matching services exist, but no linked active account has the professional role.";
   }
 
-  const localProfiles = categoryProfiles.filter((profile: any) =>
+  const localProfiles = matching.profiles.filter((profile: any) =>
     servesWithinRadius(profile, request));
   if (!localProfiles.length) {
     const hasCoordinates = typeof request.addressSnapshot?.latitude === "number"
@@ -224,18 +259,9 @@ async function explainNoMatch(request: any): Promise<string> {
   }
 
   const profileIds = localProfiles.map((profile: any) => profile._id);
-  const activeServices = await Service.find({
-    professionalId: { $in: profileIds },
-    category: request.serviceCategory,
-    isActive: true,
-    $or: [
-      { pricingType: { $in: ["fixed", "starting_from"] }, pricePaise: { $gte: 1 } },
-      { pricingType: "quote_required" },
-    ],
-  }).select("professionalId pricingType pricePaise").lean();
-  if (!activeServices.length) {
-    return "Nearby approved professionals do not have an active listing for this service category yet.";
-  }
+  const locationProfileIds = new Set(profileIds.map((id: unknown) => String(id)));
+  const activeServices = matching.services.filter((service: any) =>
+    locationProfileIds.has(String(service.professionalId)));
 
   const availability = await Availability.find({
     professionalId: { $in: profileIds },

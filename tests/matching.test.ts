@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isEligibleProfessional } from "../src/lib/matching";
+import { isBookableServiceForCategory, isEligibleProfessional } from "../src/lib/matching";
 
 const request = {
   customerId: "customer-1",
@@ -10,8 +10,29 @@ const request = {
 const profile = {
   userId: "professional-1",
   applicationStatus: "approved",
-  categories: ["makeup"],
 };
+
+test("matching starts with an active bookable service in the selected category", () => {
+  assert.equal(isBookableServiceForCategory({
+    category: "makeup",
+    isActive: true,
+    pricingType: "fixed",
+    pricePaise: 250000,
+  }, "makeup"), true);
+
+  assert.equal(isBookableServiceForCategory({
+    category: "hair_styling",
+    isActive: true,
+    pricingType: "fixed",
+    pricePaise: 250000,
+  }, "makeup"), false);
+
+  assert.equal(isBookableServiceForCategory({
+    category: "makeup",
+    isActive: false,
+    pricingType: "quote_required",
+  }, "makeup"), false);
+});
 
 test("booking offers are only eligible for active professional accounts", () => {
   assert.equal(isEligibleProfessional(profile, {
@@ -33,7 +54,7 @@ test("booking offers are only eligible for active professional accounts", () => 
   }, request), false);
 });
 
-test("booking offers exclude the requester and require the selected service category", () => {
+test("booking offers exclude the requester and defer service-category matching to active listings", () => {
   assert.equal(isEligibleProfessional({
     ...profile,
     userId: "customer-1",
@@ -45,10 +66,9 @@ test("booking offers exclude the requester and require the selected service cate
 
   assert.equal(isEligibleProfessional({
     ...profile,
-    categories: ["hair_styling"],
   }, {
     _id: "professional-1",
     role: "professional",
     accountStatus: "active",
-  }, request), false);
+  }, request), true);
 });
