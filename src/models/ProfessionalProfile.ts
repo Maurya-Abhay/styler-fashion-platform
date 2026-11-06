@@ -1,5 +1,4 @@
 import mongoose, { Schema, model, models, InferSchemaType } from "mongoose";
-import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
 
 const PortfolioImageSchema = new Schema(
   {
@@ -65,7 +64,6 @@ export const ProfessionalProfileSchema = new Schema(
     experienceYears: { type: Number, min: 0, max: 80, default: 0 },
     categories: {
       type: [String],
-      enum: SERVICE_CATEGORY_IDS,
       default: [],
     },
     city: { type: String, trim: true, maxlength: 100 },

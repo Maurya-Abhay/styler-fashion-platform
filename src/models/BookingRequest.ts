@@ -1,5 +1,4 @@
 import { Schema, model, models, InferSchemaType } from "mongoose";
-import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
 
 const ReferenceImageSchema = new Schema(
   {
@@ -34,7 +33,6 @@ export const BookingRequestSchema = new Schema(
     serviceCategory: {
       type: String,
       required: true,
-      enum: SERVICE_CATEGORY_IDS,
       index: true,
     },
     requirements: { type: String, required: true, trim: true, minlength: 10, maxlength: 4000 },

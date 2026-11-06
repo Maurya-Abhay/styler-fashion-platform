@@ -489,6 +489,14 @@ http://localhost:3000
 
 The API is served through the same Next.js application.
 
+On the first setup, populate the service-category collection from the existing marketplace categories:
+
+```bash
+npm run seed:service-categories
+```
+
+This inserts missing categories only; it does not overwrite categories already managed by an administrator. Categories can then be added, edited, activated, deactivated, and deleted from **Admin → Service Categories**. Deletion is blocked while a category is referenced by services, professionals, or booking history.
+
 ### 📱 Mobile Application Setup
 
 Open a second terminal and navigate to the mobile application:
@@ -565,6 +573,7 @@ Configure these variables in the root `.env.local` file.
 |---|---|
 | `APP_URL` | Canonical application URL |
 | `NEXT_PUBLIC_APP_URL` | Public application URL |
+| `MOBILE_WEB_ORIGINS` | Optional comma-separated exact origins allowed to call the API from the Expo web client; configure production origins only |
 | `MONGODB_URI` | MongoDB connection string |
 | `MONGODB_MAX_POOL_SIZE` | Optional database connection pool setting |
 | `MONGODB_SELECTION_TIMEOUT_MS` | Optional MongoDB server selection timeout |
@@ -610,6 +619,8 @@ Configure these variables in `styler-mobile/.env`.
 - Keep payment credentials and webhook secrets on the server.
 - Use strong, randomly generated secrets for production.
 - Keep `.env.local` and `styler-mobile/.env` out of version control.
+
+The API permits the standard local Expo web origins (`localhost:8081`, `localhost:8082`, and `localhost:19006`) in development. For a deployed Expo web client, set `MOBILE_WEB_ORIGINS` on the API server to its exact HTTPS origin(s), comma-separated. Native iOS and Android requests do not use browser CORS.
 
 For complete placeholder lists, refer to:
 

@@ -1,5 +1,6 @@
 import { currentUser, readJson, paginationFromRequest, withApi } from "@/lib/api-utils";
 import { bookingRequestSchema, parseOrThrow } from "@/lib/validation";
+import { activeServiceCategoryExists } from "@/lib/service-categories";
 import { createBookingRequest } from "@/lib/booking";
 import BookingRequest from "@/models/BookingRequest";
 import { notifyAdmins, notifyUser } from "@/lib/notifications";
@@ -8,6 +9,9 @@ export const GET = withApi(async (request) => { const auth = await currentUser(r
 export const POST = withApi(async (request) => {
   const auth = await currentUser(request, ["customer"]);
   const body = parseOrThrow(bookingRequestSchema, await readJson(request));
+  if (!await activeServiceCategoryExists(body.serviceCategory)) {
+    throw new AppError("Choose an active service category.", 422, "CATEGORY_INACTIVE");
+  }
   const result = await createBookingRequest({ customerId: auth.userId, ...body });
   if (result.request?._id) {
     const requestId = String(result.request._id);

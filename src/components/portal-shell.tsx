@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity, Bell, CalendarDays, Clock3, CreditCard, FileCheck2, Image as PortfolioIcon, LayoutDashboard,
-  LogOut, Menu, Scissors, Settings, ShieldCheck, SlidersHorizontal, Star, User, Users, WalletCards, BarChart3, X,
+  LogOut, Menu, Scissors, Settings, ShieldCheck, SlidersHorizontal, Star, User, Users, WalletCards, BarChart3, X, Tags,
   type LucideIcon,
 } from "lucide-react";
 import { apiRequest } from "@/components/api-client";
@@ -35,6 +35,7 @@ const NAV: Record<Role, NavItem[]> = {
     { label: "Notifications", href: "/admin/notifications", icon: Bell },
     { label: "Applications", href: "/admin/applications", icon: FileCheck2 },
     { label: "Professionals", href: "/admin/professionals", icon: Users },
+    { label: "Service Categories", href: "/admin/service-categories", icon: Tags },
     { label: "Users", href: "/admin/users", icon: Users },
     { label: "Contact Inbox", href: "/admin/contact-messages", icon: Bell },
     { label: "Requests", href: "/admin/booking-requests", icon: Activity },

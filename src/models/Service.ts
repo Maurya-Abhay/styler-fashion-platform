@@ -1,5 +1,4 @@
 import { Schema, model, models, InferSchemaType } from "mongoose";
-import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
 
 const ServiceImageSchema = new Schema(
   {
@@ -20,7 +19,6 @@ export const ServiceSchema = new Schema(
     category: {
       type: String,
       required: true,
-      enum: SERVICE_CATEGORY_IDS,
       index: true,
     },
     title: { type: String, required: true, trim: true, minlength: 3, maxlength: 140 },

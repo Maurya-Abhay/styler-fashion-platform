@@ -38,6 +38,18 @@ export async function listPublicServices({
     { $match: match },
     {
       $lookup: {
+        from: "service_categories",
+        let: { categorySlug: "$category" },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ["$slug", "$$categorySlug"] }, { $eq: ["$isActive", true] }] } } },
+          { $project: { _id: 1, name: 1 } },
+        ],
+        as: "categoryRecord",
+      },
+    },
+    { $match: { "categoryRecord.0": { $exists: true } } },
+    {
+      $lookup: {
         from: "professional_profiles",
         localField: "professionalId",
         foreignField: "_id",
@@ -55,9 +67,10 @@ export async function listPublicServices({
 
   const total = Number(result?.total?.[0]?.n ?? 0);
   const items = (result?.items ?? []).map(
-    ({ professional, ...service }: any) => ({
+    ({ professional, categoryRecord, ...service }: any) => ({
       ...service,
       professional: professional?.[0] ?? null,
+      categoryLabel: categoryRecord?.[0]?.name ?? null,
     }),
   );
 

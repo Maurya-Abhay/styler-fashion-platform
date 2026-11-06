@@ -7,13 +7,13 @@ import User from "@/models/User";
 import { currentUser, readJson, withApi, writeAudit } from "@/lib/api-utils";
 import { safeDocumentSummary } from "@/lib/api-domain";
 import { AppError } from "@/types";
-import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
+import { activeServiceCategoryExists, listServiceCategories } from "@/lib/service-categories";
 import { notifyAdmins } from "@/lib/notifications";
 
 const docSchema = z.object({ documentType: z.enum(["identity_proof", "address_proof", "professional_certificate", "business_registration", "other"]), storageKey: z.string().trim().min(1).max(500).refine((value) => value.replace(/^\/+/, "").startsWith("styler/private-documents/"), "Verification documents must use the private documents folder."), originalFileName: z.string().max(255).optional(), mimeType: z.string().max(100).optional(), sizeBytes: z.number().int().min(1).max(10 * 1024 * 1024).optional() });
 const profileSchema = z.object({
   displayName: z.string().trim().min(2).max(120).optional(), bio: z.string().trim().max(3000).optional(),
-  experienceYears: z.number().int().min(0).max(80).optional(), categories: z.array(z.enum(SERVICE_CATEGORY_IDS)).max(SERVICE_CATEGORY_IDS.length).optional(),
+  experienceYears: z.number().int().min(0).max(80).optional(), categories: z.array(z.string().regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/).max(120)).max(100).optional(),
   city: z.string().trim().max(100).optional(), state: z.string().trim().max(100).optional(), postalCode: z.string().trim().max(12).optional(),
   baseLocation: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
   serviceAreas: z.array(z.object({ city: z.string().trim().min(2).max(100), state: z.string().trim().min(2).max(100), postalCodes: z.array(z.string().max(12)).max(100).default([]), radiusKm: z.number().min(1).max(200).optional() })).max(30).optional(),
@@ -22,10 +22,16 @@ const profileSchema = z.object({
   documents: z.array(docSchema).max(10).optional(), submit: z.boolean().default(false),
 });
 
-export const GET = withApi(async (request) => { const auth = await currentUser(request, ["professional"]); const profile = await ProfessionalProfile.findOne({ userId: auth.userId }).lean(); if (!profile) throw new AppError("Professional profile not found.", 404, "PROFILE_NOT_FOUND"); const summary = safeDocumentSummary(profile); return { ...summary, documents: (profile.documents ?? []).map((doc: any) => ({ id: String(doc._id), documentType: doc.documentType, storageKey: doc.storageKey, originalFileName: doc.originalFileName, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, status: doc.status, reviewReason: doc.reviewReason })) }; });
+export const GET = withApi(async (request) => { const auth = await currentUser(request, ["professional"]); const profile = await ProfessionalProfile.findOne({ userId: auth.userId }).lean(); if (!profile) throw new AppError("Professional profile not found.", 404, "PROFILE_NOT_FOUND"); const summary = safeDocumentSummary(profile); const categories = await listServiceCategories(true); const categoryLabels = new Map(categories.map((category: any) => [String(category.slug), String(category.name)])); return { ...summary, categoryLabels: (profile.categories ?? []).map((category: string) => categoryLabels.get(category) || category.replaceAll("_", " ")), documents: (profile.documents ?? []).map((doc: any) => ({ id: String(doc._id), documentType: doc.documentType, storageKey: doc.storageKey, originalFileName: doc.originalFileName, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, status: doc.status, reviewReason: doc.reviewReason })) }; });
 export const PATCH = withApi(async (request) => {
   const auth = await currentUser(request, ["professional"]); const body = profileSchema.parse(await readJson(request));
   const profile = await ProfessionalProfile.findOne({ userId: auth.userId }); if (!profile) throw new AppError("Professional profile not found.", 404, "PROFILE_NOT_FOUND");
+  if (body.categories) {
+    const activeCategories = await Promise.all(body.categories.map(async (category) =>
+      profile.categories.includes(category) || await activeServiceCategoryExists(category),
+    ));
+    if (activeCategories.some((active) => !active)) throw new AppError("Select only active service categories.", 422, "CATEGORY_INACTIVE");
+  }
   if (["approved", "pending_review", "suspended"].includes(profile.applicationStatus)) throw new AppError("This application cannot be edited in its current status.", 409, "APPLICATION_NOT_EDITABLE");
   const { submit, ...fields } = body;
   for (const [key, value] of Object.entries(fields)) if (value !== undefined) (profile as any).set(key, value);

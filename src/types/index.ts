@@ -1,11 +1,9 @@
 import type { Types } from "mongoose";
-import type { SERVICE_CATEGORY_IDS } from "@/lib/categories";
-
 export type UserRole = "customer" | "professional" | "admin";
 export type AccountStatus = "pending_email" | "active" | "suspended" | "disabled";
 export type AuthMethod = "web" | "mobile";
 export type OtpPurpose = "email_verification" | "password_reset";
-export type ServiceCategory = typeof SERVICE_CATEGORY_IDS[number];
+export type ServiceCategory = string;
 export type ProfessionalApplicationStatus =
   | "draft"
   | "pending_review"

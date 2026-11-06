@@ -5,13 +5,11 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight, ArrowUpRight, BadgeCheck, CalendarCheck, CheckCircle2,
-  ChevronRight, Clock3, Heart, MapPin, Palette, Ruler, Search,
-  Scissors, ShieldCheck, Shirt, Sparkles, WandSparkles, Activity,
+  ChevronRight, Clock3, Heart, MapPin, Scissors, Search, ShieldCheck, Shirt, Sparkles,
 } from "lucide-react";
 import { apiRequest, unwrapItems } from "@/components/api-client";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { CATEGORIES as MARKETPLACE_CATEGORIES } from "@/lib/categories";
 
 type ServiceImage = { url?: string; altText?: string };
 
@@ -45,64 +43,6 @@ type ServiceSummary = {
   professional?: ProfessionalSummary | null;
 };
 
-const CATEGORY_ICON_BY_ID: Record<string, typeof Sparkles> = {
-  hair_styling: WandSparkles,
-  makeup: Palette,
-  skincare: Sparkles,
-  nails: Sparkles,
-  massage: Heart,
-  home_cleaning: Sparkles,
-  plumbing: Ruler,
-  fitness_wellness: Activity,
-  lehenga_stitching: Sparkles,
-  custom_clothing: Shirt,
-  alterations: Ruler,
-  personal_styling: WandSparkles,
-  fashion_consulting: Palette,
-  special_occasion_wear: Scissors,
-  other: Sparkles,
-};
-
-const CATEGORY_IMAGE_BY_ID: Record<string, string> = {
-  hair_styling: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=700&q=85",
-  makeup: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=700&q=85",
-  skincare: "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=700&q=85",
-  nails: "https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=700&q=85",
-  massage: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=700&q=85",
-  home_cleaning: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=700&q=85",
-  plumbing: "https://images.unsplash.com/photo-1621905251918-48416bd8575a?auto=format&fit=crop&w=700&q=85",
-  fitness_wellness: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=700&q=85",
-  lehenga_stitching: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=700&q=85",
-  custom_clothing: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=700&q=85",
-  alterations: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?auto=format&fit=crop&w=700&q=85",
-  personal_styling: "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=700&q=85",
-  fashion_consulting: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=700&q=85",
-  special_occasion_wear: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=700&q=85",
-  other: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=700&q=85",
-};
-
-const CATEGORY_GROUP_ORDER: Record<string, number> = {
-  fashion: 0,
-  beauty: 1,
-  wellness: 2,
-  home: 3,
-  repairs: 4,
-};
-
-const CATEGORIES = [...MARKETPLACE_CATEGORIES]
-  .sort((a, b) => CATEGORY_GROUP_ORDER[a.group] - CATEGORY_GROUP_ORDER[b.group])
-  .map((category) => ({
-  id: category.slug,
-  label: category.label,
-  description: category.blurb,
-  icon: CATEGORY_ICON_BY_ID[category.slug] || Sparkles,
-  image: CATEGORY_IMAGE_BY_ID[category.slug],
-  }));
-
-const SERVICE_FALLBACK_IMAGES: Record<string, string> = Object.fromEntries(
-  CATEGORIES.map((item) => [item.id, item.image.replace("w=700", "w=900")])
-);
-
 const TRUST_ITEMS = [
   { icon: BadgeCheck, title: "Approved professionals", text: "Reviewed before joining" },
   { icon: ShieldCheck, title: "Secure payments", text: "Protected checkout" },
@@ -126,8 +66,8 @@ function professionalImage(pro: ProfessionalSummary) {
   return pro.profilePhoto?.url || pro.profileImageUrl || "";
 }
 
-function categoryName(category?: string) {
-  return CATEGORIES.find((item) => item.id === category)?.label || "Fashion service";
+function categoryName(category: string | undefined, categories: Array<{ slug: string; name: string }>) {
+  return categories.find((item) => item.slug === category)?.name || "Service";
 }
 
 export function SiteHome() {
@@ -135,6 +75,7 @@ export function SiteHome() {
   const [city, setCity] = useState("");
   const [services, setServices] = useState<ServiceSummary[]>([]);
   const [professionals, setProfessionals] = useState<ProfessionalSummary[]>([]);
+  const [categories, setCategories] = useState<Array<{ slug: string; name: string; description?: string; image?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const featuredProfessional = professionals[0];
@@ -147,6 +88,7 @@ export function SiteHome() {
       const results = await Promise.allSettled([
         apiRequest<unknown>("/api/services?limit=8", { signal: controller.signal }),
         apiRequest<unknown>("/api/professionals?limit=4", { signal: controller.signal }),
+        apiRequest<{ items: Array<{ slug: string; name: string; description?: string; image?: string }> }>("/api/service-categories", { signal: controller.signal }),
       ]);
 
       if (controller.signal.aborted) return;
@@ -155,6 +97,7 @@ export function SiteHome() {
         ? unwrapItems(results[0].value) as ServiceSummary[] : []);
       setProfessionals(results[1].status === "fulfilled"
         ? unwrapItems(results[1].value) as ProfessionalSummary[] : []);
+      setCategories(results[2].status === "fulfilled" ? results[2].value.items || [] : []);
       setApiError(results.some((result) => result.status === "rejected"));
       setLoading(false);
     }
@@ -274,13 +217,13 @@ export function SiteHome() {
 
               <div className="mt-5 flex flex-wrap items-center gap-2 lg:mt-7">
                 <span className="mr-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">Popular:</span>
-                {["lehenga_stitching", "custom_clothing", "alterations"].map((category) => (
+                {categories.slice(0, 3).map((category) => (
                   <Link
-                    key={category}
-                    href={`/services/${category}`}
+                    key={category.slug}
+                    href={`/services/${category.slug}`}
                     className="rounded-md border border-blue-100 bg-white/75 px-3 py-1.5 text-[10px] font-semibold text-[#29477f] transition hover:border-blue-300 hover:bg-white hover:text-[#174fc9] dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
                   >
-                    {categoryName(category)}
+                    {category.name}
                   </Link>
                 ))}
               </div>
@@ -291,7 +234,7 @@ export function SiteHome() {
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-md bg-pink-50 text-styler-accent"><Shirt size={19} /></span>
               <span>
-                <strong className="block text-xs text-[#17264a]">Bridal wear</strong>
+                <strong className="block text-xs text-[#17264a]">{categories[0]?.name || "Service categories"}</strong>
                 <span className="mt-0.5 block text-[10px] text-slate-500">Designed around you</span>
               </span>
               <ChevronRight size={15} className="text-[#3973ef]" />
@@ -320,18 +263,27 @@ export function SiteHome() {
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6">
-            {CATEGORIES.map(({ id, label, icon: Icon, image }) => {
+            {categories.map(({ slug, name, description, image }) => {
               return (
-                <Link key={id} href={`/services/${id}`} className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface transition hover:-translate-y-0.5 hover:border-styler-line-strong hover:shadow-soft">
+                <Link key={slug} href={`/services/${slug}`} className="group overflow-hidden rounded-lg border border-styler-line bg-styler-surface transition hover:-translate-y-0.5 hover:border-styler-line-strong hover:shadow-soft">
                   <div className="relative h-[4.5rem] overflow-hidden sm:h-24">
-                    <img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                    <img
+                      src={image || "/images/hero-desktop.webp"}
+                      alt=""
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.onerror = null;
+                        event.currentTarget.src = "/images/hero-desktop.webp";
+                      }}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-                    <span className="absolute bottom-1.5 left-1.5 grid h-7 w-7 place-items-center rounded-md bg-white/95 text-styler-accent sm:bottom-2 sm:left-2 sm:h-8 sm:w-8"><Icon size={16} /></span>
+                    <span className="absolute bottom-1.5 left-1.5 grid h-7 w-7 place-items-center rounded-md bg-white/95 text-styler-accent sm:bottom-2 sm:left-2 sm:h-8 sm:w-8"><Sparkles size={16} /></span>
                   </div>
                   <div className="flex min-h-[4.25rem] items-center justify-between gap-1.5 px-2 py-2 sm:min-h-[4.5rem] sm:px-3">
                     <div className="min-w-0">
-                      <h3 className="line-clamp-2 text-[11px] font-bold leading-snug sm:text-sm">{label}</h3>
-                      <span className="mt-1 block text-[9px] font-medium text-styler-muted sm:text-[10px]">Explore services</span>
+                      <h3 className="line-clamp-2 text-[11px] font-bold leading-snug sm:text-sm">                      {name}</h3>
+                      <span className="mt-1 block text-[9px] font-medium text-styler-muted sm:text-[10px]">{description || "Explore services"}</span>
                     </div>
                     <ChevronRight size={14} className="shrink-0 text-styler-accent transition-transform group-hover:translate-x-0.5" />
                   </div>
@@ -348,7 +300,7 @@ export function SiteHome() {
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Picked for you</p>
-                <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Popular fashion services</h2>
+                <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Popular services</h2>
                 <p className="mt-2 text-sm text-styler-muted">Discover services and pricing from professionals.</p>
               </div>
               <Link href="/services" className="hidden items-center gap-1 text-sm font-semibold text-styler-accent sm:inline-flex">
@@ -367,12 +319,11 @@ export function SiteHome() {
                 {services.slice(0, 4).map((service, i) => {
                   const image =
                     service.images?.find((item) => item.url)?.url ||
-                    SERVICE_FALLBACK_IMAGES[service.category || ""] ||
-                    CATEGORIES[i % CATEGORIES.length].image;
+                    "/images/hero-desktop.webp";
                   const profile = service.professional;
                   const href = profile?.slug
                     ? `/professionals/${profile.slug}`
-                    : `/services/${service.category || "lehenga_stitching"}`;
+                    : service.category ? `/services/${service.category}` : "/services";
 
                   return (
                     <Link
@@ -383,12 +334,12 @@ export function SiteHome() {
                       <div className="relative h-44 overflow-hidden">
                         <img src={image} alt={service.title || "Fashion service"} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
                         <span className="absolute left-3 top-3 rounded-md bg-white/95 px-2.5 py-1 text-[10px] font-bold text-styler-accent">
-                          {categoryName(service.category)}
+                          {categoryName(service.category, categories)}
                         </span>
                       </div>
                       <div className="p-4">
                         <h3 className="font-bold group-hover:text-styler-accent">
-                          {service.title || categoryName(service.category)}
+                          {service.title || categoryName(service.category, categories)}
                         </h3>
                         <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-styler-muted">
                           {service.description || "Discuss your requirements with a fashion professional."}
@@ -452,7 +403,8 @@ export function SiteHome() {
                   "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=800&q=85",
                   "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=85",
                 ][i % 4];
-                const categories = (pro.categories || []).slice(0, 2).map(categoryName).join(" · ");
+                const professionalCategoryLabels = (pro.categories || []).slice(0, 2)
+                  .map((category) => categoryName(category, categories)).join(" · ");
                 const identifier = pro.slug || pro.id || pro._id;
 
                 return (
@@ -475,7 +427,7 @@ export function SiteHome() {
                         {name} <BadgeCheck size={15} className="text-sky-600" />
                       </h3>
                       <p className="mt-1 truncate text-xs text-styler-muted">
-                        {categories || "Fashion designer & tailor"}
+                        {professionalCategoryLabels || "Styler professional"}
                       </p>
                       <p className="mt-3 flex items-center gap-1 text-xs text-styler-muted">
                         <MapPin size={13} /> {[pro.city, pro.state].filter(Boolean).join(", ") || "India"}

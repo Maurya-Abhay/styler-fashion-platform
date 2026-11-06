@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATEGORIES, SERVICE_CATEGORY_IDS } from "../src/lib/categories";
 import {
   bookingRequestSchema,
   professionalPayoutAccountSchema,
@@ -12,7 +11,7 @@ import {
 import { getCancellationRefundDecision, validateQuotePrice } from "../src/lib/booking";
 
 const request = {
-  serviceCategory: "lehenga_stitching",
+  serviceCategory: "new_dynamic_category",
   requirements: "Please stitch a bridal lehenga for my wedding.",
   addressSnapshot: {
     recipientName: "Test User",
@@ -27,12 +26,10 @@ const request = {
   preferredEndAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
 };
 
-test("all shared marketplace service categories are request-valid and discoverable", () => {
-  assert.equal(new Set(SERVICE_CATEGORY_IDS).size, SERVICE_CATEGORY_IDS.length);
-  assert.deepEqual(CATEGORIES.map((category) => category.slug).sort(), [...SERVICE_CATEGORY_IDS].sort());
-  for (const category of SERVICE_CATEGORY_IDS) {
-    assert.equal(serviceCategorySchema.safeParse(category).success, true);
-  }
+test("category slugs allow admin-created categories without a hardcoded allowlist", () => {
+  assert.equal(serviceCategorySchema.safeParse("wedding_makeup").success, true);
+  assert.equal(serviceCategorySchema.safeParse("new_dynamic_category").success, true);
+  assert.equal(serviceCategorySchema.safeParse("not-a-valid-category").success, false);
 });
 
 test("booking request defaults to a bounded radius and rejects partial GPS coordinates", () => {

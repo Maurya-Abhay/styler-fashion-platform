@@ -1,25 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Activity,
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
   Clock3,
-  Heart,
-  Palette,
-  Ruler,
   Search,
-  Scissors,
   ShieldCheck,
-  Shirt,
   Sparkles,
-  WandSparkles,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { CATEGORIES, FEATURED_GROUPS } from "@/lib/categories";
+import { CategoryImage } from "@/components/category-image";
 import { listPublicServices } from "@/lib/public-services";
+import { listServiceCategories } from "@/lib/service-categories";
 
 export const metadata: Metadata = {
   title: "Services | Styler",
@@ -36,6 +30,7 @@ type RawService = {
   title?: string;
   name?: string;
   category?: string | { name?: string; label?: string; slug?: string } | null;
+  categoryLabel?: string | null;
   description?: string;
   blurb?: string;
   pricePaise?: number;
@@ -115,7 +110,7 @@ function normalize(item: RawService, index: number): Service | null {
   const title = text(item.title, item.name);
   if (!title) return null;
 
-  const category = labelCategory(item.category);
+  const category = text(item.categoryLabel) || labelCategory(item.category);
   const rawCategory = typeof item.category === "string"
     ? item.category
     : item.category && typeof item.category === "object"
@@ -185,32 +180,6 @@ function formatDuration(minutes?: number) {
   return remaining ? `${hours} hr ${remaining} min` : `${hours} hr`;
 }
 
-const CATEGORY_ICON_BY_ID: Record<string, typeof Sparkles> = {
-  hair_styling: WandSparkles,
-  makeup: Palette,
-  skincare: Sparkles,
-  nails: Sparkles,
-  massage: Heart,
-  home_cleaning: Sparkles,
-  plumbing: Ruler,
-  fitness_wellness: Activity,
-  lehenga_stitching: Sparkles,
-  custom_clothing: Shirt,
-  alterations: Scissors,
-  personal_styling: WandSparkles,
-  fashion_consulting: Palette,
-  special_occasion_wear: Shirt,
-  other: Sparkles,
-};
-
-const CATEGORY_GROUP_ORDER: Record<string, number> = {
-  fashion: 0,
-  beauty: 1,
-  wellness: 2,
-  home: 3,
-  repairs: 4,
-};
-
 export default async function ServicesPage({
   searchParams,
 }: {
@@ -220,19 +189,27 @@ export default async function ServicesPage({
   const query = getParam(params.q).trim();
   const group = getParam(params.group);
 
-  const serviceResult = await loadServices();
+  const [serviceResult, categoryResult] = await Promise.all([
+    loadServices(),
+    listServiceCategories()
+      .then((items) => ({ items, error: false }))
+      .catch((error) => {
+        console.error("Failed to load service categories.", error);
+        return { items: [], error: true };
+      }),
+  ]);
+  const categoryItems = categoryResult.items;
   const allServices = serviceResult.items
     .map(normalize)
     .filter((s): s is Service => s !== null);
 
-  const categories = CATEGORIES.map((category) => ({
+  const categories = categoryItems.map((category) => ({
     key: slugify(category.slug),
-    label: category.label,
-    group: category.group,
-    Icon: CATEGORY_ICON_BY_ID[category.slug] || Sparkles,
+    label: category.name,
+    image: category.image,
+    Icon: Sparkles,
     count: allServices.filter((service) => service.categoryKey === slugify(category.slug)).length,
   }));
-
   const activeGroup = categories.some((c) => c.key === group) ? group : "";
 
   const services = allServices.filter((s) => {
@@ -306,6 +283,11 @@ export default async function ServicesPage({
 
         {/* Category filters */}
         <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8" aria-label="Filter services by category">
+          {categoryResult.error && (
+            <div role="alert" className="mb-5 border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+              Service categories could not be loaded. Please try again shortly.
+            </div>
+          )}
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-styler-accent">Explore services</p>
@@ -336,45 +318,44 @@ export default async function ServicesPage({
                 All services <span className="text-xs opacity-75">{allServices.length}</span>
               </Link>
             </div>
-            {[...FEATURED_GROUPS]
-              .sort((a, b) => CATEGORY_GROUP_ORDER[a.key] - CATEGORY_GROUP_ORDER[b.key])
-              .map((groupMeta) => {
-              const groupCategories = categories.filter((category) => category.group === groupMeta.key);
-              if (!groupCategories.length) return null;
-
-              return (
-                <div key={groupMeta.key}>
-                      <h3 className="mb-3 text-sm font-semibold text-styler-ink">{groupMeta.label}</h3>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                        {groupCategories.map(({ key, label, Icon, count }) => {
-                          const selected = activeGroup === key;
-                          return (
-                            <Link
-                              key={key}
-                              href={`/services?group=${encodeURIComponent(key)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
-                              aria-current={selected ? "page" : undefined}
-                              className={`flex min-h-16 items-center gap-2.5 border px-3 py-2.5 transition ${
-                                selected
-                                  ? "border-styler-accent bg-styler-accent-soft"
-                                  : "border-styler-line bg-styler-surface hover:border-styler-line-strong hover:bg-styler-surface-2"
-                              }`}
-                            >
-                              <span className={`grid h-9 w-9 shrink-0 place-items-center ${selected ? "bg-styler-surface text-styler-accent" : "bg-styler-surface-2 text-styler-accent"}`}>
-                                <Icon size={17} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block truncate text-xs font-semibold text-styler-ink">{label}</span>
-                                <span className="mt-0.5 block text-[10px] text-styler-muted">
-                                  {count ? `${count} ${count === 1 ? "service" : "services"}` : "View category"}
-                                </span>
-                              </span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                </div>
-              );
-            })}
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-styler-ink">Browse categories</h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {categories.map(({ key, label, image, Icon, count }) => {
+                  const selected = activeGroup === key;
+                  return (
+                    <Link
+                      key={key}
+                      href={`/services?group=${encodeURIComponent(key)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+                      aria-current={selected ? "page" : undefined}
+                      className={`flex min-h-16 items-center gap-2.5 border px-3 py-2.5 transition ${
+                        selected
+                          ? "border-styler-accent bg-styler-accent-soft"
+                          : "border-styler-line bg-styler-surface hover:border-styler-line-strong hover:bg-styler-surface-2"
+                      }`}
+                    >
+                      {image ? (
+                        <CategoryImage
+                          src={image}
+                          alt=""
+                          className="h-9 w-9 shrink-0 object-cover"
+                        />
+                      ) : (
+                        <span className={`grid h-9 w-9 shrink-0 place-items-center ${selected ? "bg-styler-surface text-styler-accent" : "bg-styler-surface-2 text-styler-accent"}`}>
+                          <Icon size={17} aria-hidden="true" />
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold text-styler-ink">{label}</span>
+                        <span className="mt-0.5 block text-[10px] text-styler-muted">
+                          {count ? `${count} ${count === 1 ? "service" : "services"}` : "View category"}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           </nav>
         </section>
 

@@ -32,6 +32,7 @@ type Service = {
   id?: string;
   title?: string;
   category?: string;
+  categoryLabel?: string;
   description?: string;
   durationMinutes?: number;
   pricingType?: string;
@@ -62,6 +63,7 @@ type Professional = {
   state?: string;
   experienceYears?: number;
   categories?: string[];
+  categoryLabels?: string[];
   services?: Service[];
   rating?: { averageRating?: number; total?: number };
 };
@@ -270,8 +272,8 @@ export function ProfessionalDiscovery() {
                     ) : null}
                     <p className="mt-3 line-clamp-1 text-xs text-styler-muted">
                       {services.length
-                        ? services.map((service) => service.title || humanize(service.category || "Service")).slice(0, 3).join(" · ")
-                        : (professional.categories || []).map(humanize).slice(0, 3).join(" · ") || "View professional profile"}
+                        ? services.map((service) => service.title || service.categoryLabel || humanize(service.category || "Service")).slice(0, 3).join(" · ")
+                        : (professional.categoryLabels || professional.categories || []).map(humanize).slice(0, 3).join(" · ") || "View professional profile"}
                     </p>
                     <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-styler-accent">
                       View profile <ArrowUpRight size={15} />
@@ -558,12 +560,12 @@ export function ProfessionalDetail({ slug, initialData }: Props) {
 
                     {profile.categories?.length ? (
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {profile.categories.map((category) => (
+                        {profile.categories.map((category, index) => (
                           <span
                             key={category}
                             className="border border-styler-line bg-styler-accent-soft px-3 py-1.5 text-xs font-medium text-styler-accent"
                           >
-                            {humanize(category)}
+                            {profile.categoryLabels?.[index] || humanize(category)}
                           </span>
                         ))}
                       </div>
@@ -651,7 +653,7 @@ export function ProfessionalDetail({ slug, initialData }: Props) {
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">
-                              {service.title || humanize(service.category || "Service")}
+                              {service.title || service.categoryLabel || humanize(service.category || "Service")}
                             </p>
                             <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-styler-muted">
                               <Clock3 size={12} />
@@ -766,7 +768,7 @@ export function ProfessionalDetail({ slug, initialData }: Props) {
                         </div>
                         <div className="p-5">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-styler-accent">
-                            {humanize(service.category || "Service")}
+                            {service.categoryLabel || humanize(service.category || "Service")}
                           </p>
                           <h3 className="mt-2 text-lg font-semibold">
                             {service.title || "Professional service"}

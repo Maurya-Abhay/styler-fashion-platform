@@ -6,15 +6,10 @@ import {
   ServiceSchema,
 } from "@/components/structured-data";
 import { SITE_URL } from "@/lib/site-url";
-import { CATEGORIES } from "@/lib/categories";
+import { getActiveServiceCategory } from "@/lib/service-categories";
 import { notFound } from "next/navigation";
 
 const BASE_URL = SITE_URL;
-
-function getCategoryLabel(category: string) {
-  return CATEGORIES.find((item) => item.slug === category)?.label
-    || category.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 type PageProps = {
   params: Promise<{ category: string }>;
@@ -24,8 +19,9 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { category } = await params;
-  if (!CATEGORIES.some((item) => item.slug === category)) notFound();
-  const label = getCategoryLabel(category);
+  const categoryInfo = await getActiveServiceCategory(category);
+  if (!categoryInfo) notFound();
+  const label = categoryInfo.name;
   const title = `${label} Services | Styler`;
   const description = `Find ${label.toLowerCase()} professionals near you. Explore designers, tailors and stylists on Styler.`;
 
@@ -54,8 +50,9 @@ export async function generateMetadata({
 
 export default async function Page({ params }: PageProps) {
   const { category } = await params;
-  if (!CATEGORIES.some((item) => item.slug === category)) notFound();
-  const label = getCategoryLabel(category);
+  const categoryInfo = await getActiveServiceCategory(category);
+  if (!categoryInfo) notFound();
+  const label = categoryInfo.name;
   const url = `${BASE_URL}/services/${category}`;
 
   return (
@@ -72,7 +69,11 @@ export default async function Page({ params }: PageProps) {
           ],
         }}
       />
-      <ServiceCategoryPage category={category} />
+      <ServiceCategoryPage
+        category={category}
+        categoryLabel={label}
+        categoryImage={categoryInfo.image}
+      />
     </>
   );
 }

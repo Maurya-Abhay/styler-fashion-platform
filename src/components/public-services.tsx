@@ -22,6 +22,7 @@ type Service = {
   id?: string;
   title?: string;
   category?: string;
+  categoryLabel?: string;
   description?: string;
   pricingType?: string;
   pricePaise?: number;
@@ -40,14 +41,17 @@ const FALLBACK_IMAGE = "/images/hero-desktop.webp";
 
 export function ServiceCategoryPage({
   category,
+  categoryLabel,
+  categoryImage,
 }: {
   category: string;
+  categoryLabel: string;
+  categoryImage: string;
 }) {
   const [items, setItems] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
-  const isPersonalStyling = category === "personal_styling";
 
   useEffect(() => {
     let active = true;
@@ -101,25 +105,14 @@ export function ServiceCategoryPage({
             </span>
 
             <h1 className="mt-6 max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-[46px]">
-              {isPersonalStyling ? (
-                <>
-                  Find a style that feels{" "}
-                  <span className="font-serif italic text-pink-200">like you.</span>
-                </>
-              ) : (
-                <>
-                  Find your perfect{" "}
-                  <span className="font-serif italic text-pink-200">
-                    {humanize(category).toLowerCase()}.
-                  </span>
-                </>
-              )}
+              Find your perfect{" "}
+              <span className="font-serif italic text-pink-200">
+                {categoryLabel.toLowerCase()}.
+              </span>
             </h1>
 
             <p className="mt-4 max-w-lg text-sm leading-7 text-white/75 sm:text-base">
-              {isPersonalStyling
-                ? "Get thoughtful wardrobe advice and occasion-ready looks from independent styling professionals."
-                : "Explore services from approved professionals and find the right person for your needs."}
+              Explore services from approved professionals and find the right person for your needs.
             </p>
 
             <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 border-t border-white/15 pt-5 text-xs font-medium text-white/85">
@@ -135,18 +128,16 @@ export function ServiceCategoryPage({
           </div>
 
           <div className="relative min-h-[210px] overflow-hidden sm:min-h-[280px] md:min-h-full">
-            <picture>
-              <source
-                media="(max-width: 640px)"
-                srcSet="/images/hero-mobile.webp"
-              />
-              <img
-                src={FALLBACK_IMAGE}
-                alt="Fashion styling and occasion wear inspiration"
-                fetchPriority="high"
-                className="absolute inset-0 h-full w-full object-cover object-center"
-              />
-            </picture>
+            <img
+              src={categoryImage || FALLBACK_IMAGE}
+              alt={`${categoryLabel} service inspiration`}
+              fetchPriority="high"
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = FALLBACK_IMAGE;
+              }}
+              className="absolute inset-0 h-full w-full object-cover object-center"
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-[#240b21]/35 via-transparent to-transparent md:bg-gradient-to-r md:from-[#35102f]/35 md:via-transparent md:to-transparent" />
             <span className="absolute bottom-4 right-4 border border-white/25 bg-black/25 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-sm">
               Style, your way
@@ -161,7 +152,7 @@ export function ServiceCategoryPage({
                 Explore the collection
               </p>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-                {humanize(category)} services
+                {categoryLabel} services
               </h2>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -223,7 +214,7 @@ export function ServiceCategoryPage({
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         />
                         <span className="absolute left-3 top-3 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-styler-accent shadow-sm">
-                          {humanize(service.category || category)}
+                          {service.categoryLabel || humanize(service.category || category)}
                         </span>
                       </div>
 

@@ -56,7 +56,6 @@ import {
   TextAreaField,
 } from "@/components/ui";
 import { getCurrentCoordinates, reverseGeocode } from "@/lib/location";
-import { CATEGORIES } from "@/lib/categories";
 import { BookingChat } from "@/components/booking-chat";
 import { uploadImageKit } from "@/components/imagekit-upload";
 import { useTheme } from "@/components/theme-provider";
@@ -456,7 +455,9 @@ export function BookingRequestForm() {
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState<any>(null);
-  const [category, setCategory] = useState("lehenga_stitching");
+  const [category, setCategory] = useState("");
+  const [serviceCategories, setServiceCategories] = useState<Array<{ slug: string; name: string }>>([]);
+  const [categoryError, setCategoryError] = useState("");
   const [requirements, setRequirements] = useState("");
   const [date, setDate] = useState("");
   const [start, setStart] = useState("10:00");
@@ -471,6 +472,20 @@ export function BookingRequestForm() {
   const [paymentPreference, setPaymentPreference] = useState<"when_accepted" | "later">("when_accepted");
 
   useEffect(() => {
+    let active = true;
+    apiRequest<{ items: Array<{ slug: string; name: string }> }>("/api/service-categories")
+      .then(({ items }) => {
+        if (!active) return;
+        const categories = items || [];
+        setServiceCategories(categories);
+        const requested = new URLSearchParams(window.location.search).get("service") || "";
+        setCategory((current) =>
+          categories.some((item) => item.slug === current)
+            ? current
+            : categories.find((item) => item.slug === requested)?.slug || categories[0]?.slug || "",
+        );
+      })
+      .catch((cause) => active && setCategoryError(cause instanceof Error ? cause.message : "Could not load service categories."));
     apiRequest<any>("/api/customer/addresses")
       .then((value) => {
         const addresses = unwrapItems(value);
@@ -482,7 +497,7 @@ export function BookingRequestForm() {
       .catch((cause) => setSavedAddressError(cause instanceof Error ? cause.message : "Could not load saved addresses."))
       .finally(() => setSavedAddressLoading(false));
     const params = new URLSearchParams(window.location.search);
-    if (params.get("service")) setCategory(params.get("service") || "lehenga_stitching");
+    return () => { active = false; };
   }, []);
 
   const selectedAddress = savedAddresses.find((address) => String(address._id) === selectedAddressId);
@@ -689,12 +704,13 @@ export function BookingRequestForm() {
                 onChange={(e) => setCategory(e.target.value)}
                 required
               >
-                {CATEGORIES.map((item) => (
+                {serviceCategories.map((item) => (
                   <option value={item.slug} key={item.slug}>
-                    {item.label}
+                    {item.name}
                   </option>
                 ))}
               </SelectField>
+              {categoryError && <Alert tone="error">{categoryError}</Alert>}
 
               <TextAreaField
                 label="What do you need?"
@@ -861,7 +877,7 @@ export function BookingRequestForm() {
               <div className="space-y-3 rounded-panel border border-styler-line bg-styler-canvas p-4">
                 <h3 className="font-semibold text-styler-ink">Review your request</h3>
                 <div className="grid gap-3 text-xs sm:grid-cols-2">
-                  <p><span className="text-styler-muted">Service</span><strong className="mt-1 block text-styler-ink">{CATEGORIES.find((item) => item.slug === category)?.label || humanize(category)}</strong></p>
+                  <p><span className="text-styler-muted">Service</span><strong className="mt-1 block text-styler-ink">{serviceCategories.find((item) => item.slug === category)?.name || humanize(category)}</strong></p>
                   <p><span className="text-styler-muted">Preferred time</span><strong className="mt-1 block text-styler-ink">{date} · {start}–{end}</strong></p>
                   <p><span className="text-styler-muted">Location</span><strong className="mt-1 block text-styler-ink">{selectedAddress.label} · {selectedAddress.city}, {selectedAddress.state}</strong></p>
                   <p><span className="text-styler-muted">Budget</span><strong className="mt-1 block text-styler-ink">{budgetMin || budgetMax ? `₹${budgetMin || "0"} – ₹${budgetMax || "Flexible"}` : "Flexible"}</strong></p>

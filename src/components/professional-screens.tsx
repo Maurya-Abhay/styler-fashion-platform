@@ -44,9 +44,6 @@ import { uploadImageKit } from "@/components/imagekit-upload";
 import { ProfessionalLocationEditor } from "@/components/professional-location-editor";
 import { Alert, LoadingBlock } from "@/components/ui";
 import { useTheme, type Theme } from "@/components/theme-provider";
-import { CATEGORIES } from "@/lib/categories";
-
-const categories = CATEGORIES.map((category) => category.slug);
 
 function StatusPill({ status }: { status: string }) {
   let tone = "bg-styler-surface-2 text-styler-ink-soft ";
@@ -71,6 +68,7 @@ function StatusPill({ status }: { status: string }) {
 
 export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" | "documents" | "services" | "availability" }) {
   const router = useRouter();
+  const [categories, setCategories] = useState<Array<{ slug: string; name: string }>>([]);
   const [profile, setProfile] = useState<any>({
     displayName: "",
     bio: "",
@@ -93,6 +91,9 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
   const [docFile, setDocFile] = useState<File | null>(null);
 
   useEffect(() => {
+    apiRequest<{ items: Array<{ slug: string; name: string }> }>("/api/service-categories")
+      .then(({ items }) => setCategories(items || []))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Could not load service categories."));
     apiRequest<any>("/api/professional/application")
       .then((d) =>
         setProfile({
@@ -340,20 +341,20 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
           <div>
             <label className="block text-[11px] font-semibold text-styler-ink-soft mb-2">Services Provided</label>
             <div className="flex flex-wrap gap-2">
-              {categories.map((c) => {
-                const checked = profile.categories?.includes(c);
+              {categories.map((category) => {
+                const checked = profile.categories?.includes(category.slug);
                 return (
                   <button
-                    key={c}
+                    key={category.slug}
                     type="button"
-                    onClick={() => toggleCategory(c)}
+                    onClick={() => toggleCategory(category.slug)}
                     className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-semibold border transition ${
                       checked
                         ? "border-styler-line-strong bg-styler-accent-soft text-styler-accent "
                         : "border-styler-line text-styler-ink-soft "
                     }`}
                   >
-                    <span>{humanize(c)}</span>
+                    <span>{category.name}</span>
                     {checked && <Check size={12} />}
                   </button>
                 );
@@ -512,6 +513,7 @@ export function ProfessionalOnboarding({ step = "profile" }: { step?: "profile" 
 {/* -------------------------------------------------------------------------- */}
 
 export function ServiceManager({ onboarding = false }: { onboarding?: boolean }) {
+  const [categories, setCategories] = useState<Array<{ slug: string; name: string }>>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(onboarding);
@@ -522,7 +524,7 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
   const [form, setForm] = useState<any>({
     title: "",
     slug: "",
-    category: "lehenga_stitching",
+    category: "",
     description: "",
     pricingType: "fixed",
     price: "",
@@ -548,6 +550,16 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
 
   useEffect(() => {
     load();
+    apiRequest<{ items: Array<{ slug: string; name: string }> }>("/api/service-categories")
+      .then(({ items }) => {
+        const activeCategories = items || [];
+        setCategories(activeCategories);
+        setForm((current: any) => ({
+          ...current,
+          category: current.category || activeCategories[0]?.slug || "",
+        }));
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Could not load service categories."));
   }, []);
 
   function edit(item: any) {
@@ -555,7 +567,7 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
     setForm({
       title: item.title || "",
       slug: item.slug || "",
-      category: item.category || "other",
+      category: item.category || "",
       description: item.description || "",
       pricingType: item.pricingType || "quote_required",
       price: item.pricePaise == null ? "" : String(item.pricePaise / 100),
@@ -573,7 +585,7 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
     setForm({
       title: "",
       slug: "",
-      category: "lehenga_stitching",
+      category: categories[0]?.slug || "",
       description: "",
       pricingType: "fixed",
       price: "",
@@ -685,12 +697,13 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
             <div>
               <label className="block text-[10px] font-semibold text-styler-ink-soft mb-1">Category</label>
               <select
+                required
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="w-full rounded border border-styler-line bg-styler-surface-2 px-3 py-1.5 text-xs text-styler-ink outline-none"
               >
-                {categories.map((c) => (
-                  <option key={c} value={c}>{humanize(c)}</option>
+                {categories.map((category) => (
+                  <option key={category.slug} value={category.slug}>{category.name}</option>
                 ))}
               </select>
             </div>
@@ -782,7 +795,7 @@ export function ServiceManager({ onboarding = false }: { onboarding?: boolean })
             <div key={s._id} className="rounded border border-styler-line bg-styler-surface p-4 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold uppercase text-styler-accent ">{humanize(s.category)}</span>
+                  <span className="text-[9px] font-bold uppercase text-styler-accent ">{s.categoryLabel || humanize(s.category)}</span>
                   <StatusPill status={s.isActive ? "active" : "hidden"} />
                 </div>
                 <h3 className="text-xs font-bold text-styler-ink mt-1">{s.title}</h3>
@@ -1989,12 +2002,19 @@ export function ProfessionalSettings() {
 export function ProfessionalProfile() {
   const [profile, setProfile] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [serviceCategories, setServiceCategories] = useState<Array<{ slug: string; name: string }>>([]);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [editingCategories, setEditingCategories] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState<string[]>([]);
+  const [categoryToAdd, setCategoryToAdd] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingCategories, setSavingCategories] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ displayName: "", bio: "", profilePhoto: null as { url: string; fileId?: string } | null });
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [categoryMessage, setCategoryMessage] = useState("");
+  const [categoryError, setCategoryError] = useState("");
   const [ratingSummary, setRatingSummary] = useState<any>(null);
   const [ratingError, setRatingError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -2017,6 +2037,13 @@ export function ProfessionalProfile() {
         if (!active) return;
         setUser(authData?.user || authData);
         setProfile(profileData);
+        apiRequest<{ items: Array<{ slug: string; name: string }> }>("/api/service-categories")
+          .then(({ items }) => {
+            if (active) setServiceCategories(items || []);
+          })
+          .catch((cause) => {
+            if (active) setCategoryError(cause instanceof Error ? cause.message : "Could not load service categories.");
+          });
         try {
           const reviewData = await apiRequest<any>("/api/professional/reviews?limit=1");
           if (active) setRatingSummary(reviewData?.summary || null);
@@ -2117,6 +2144,33 @@ export function ProfessionalProfile() {
     }
   }
 
+  function startEditingCategories() {
+    setCategoryDraft([...(profile?.categories || [])]);
+    setCategoryToAdd("");
+    setCategoryError("");
+    setCategoryMessage("");
+    setEditingCategories(true);
+  }
+
+  async function saveCategories() {
+    setSavingCategories(true);
+    setCategoryError("");
+    setCategoryMessage("");
+    try {
+      const result = await apiRequest<any>("/api/professional/public-profile", {
+        method: "PATCH",
+        body: JSON.stringify({ categories: categoryDraft }),
+      });
+      setProfile((current: any) => ({ ...current, ...result }));
+      setEditingCategories(false);
+      setCategoryMessage("Categories offered saved.");
+    } catch (cause) {
+      setCategoryError(cause instanceof Error ? cause.message : "Could not save categories.");
+    } finally {
+      setSavingCategories(false);
+    }
+  }
+
   if (loading) return <LoadingBlock label="Loading studio profile..." />;
   if (error && !profile) return <Alert tone="error">{error}</Alert>;
 
@@ -2152,6 +2206,8 @@ export function ProfessionalProfile() {
       {locationMessage && <Alert tone="success">{locationMessage}</Alert>}
       {profileError && <Alert tone="error">{profileError}</Alert>}
       {profileMessage && <Alert tone="success">{profileMessage}</Alert>}
+      {categoryError && <Alert tone="error">{categoryError}</Alert>}
+      {categoryMessage && <Alert tone="success">{categoryMessage}</Alert>}
 
       {profile?.applicationStatus === "pending_review" && <Alert tone="warning">Your application is being reviewed. Studio profile edits will be available after the review is complete.</Alert>}
 
@@ -2310,16 +2366,110 @@ export function ProfessionalProfile() {
 
         {/* Categories Offered */}
         <div className="rounded border border-styler-line bg-styler-surface p-5 shadow-2xs space-y-3">
-          <h3 className="text-xs font-bold text-styler-ink ">Categories Offered</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-xs font-bold text-styler-ink">Categories Offered</h3>
+            {!editingCategories && (
+              <button
+                type="button"
+                onClick={startEditingCategories}
+                disabled={!canEditPublicProfile}
+                className="inline-flex items-center gap-1 rounded border border-styler-line px-2.5 py-1.5 text-[10px] font-semibold text-styler-ink hover:bg-styler-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Pencil size={11} /> Edit
+              </button>
+            )}
+          </div>
 
-          {categories.length > 0 ? (
+          {editingCategories ? (
+            <div className="space-y-3">
+              <p className="text-[10px] text-styler-muted">Choose the active service categories your studio offers.</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  aria-label="Choose a service category to add"
+                  value={categoryToAdd}
+                  onChange={(event) => setCategoryToAdd(event.target.value)}
+                  className="min-w-0 flex-1 rounded border border-styler-line bg-styler-surface px-3 py-2 text-xs text-styler-ink"
+                >
+                  <option value="">Select a category to add</option>
+                  {serviceCategories
+                    .filter((category) => !categoryDraft.includes(category.slug))
+                    .map((category) => (
+                      <option key={category.slug} value={category.slug}>{category.name}</option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!categoryToAdd || savingCategories}
+                  onClick={() => {
+                    if (categoryToAdd && !categoryDraft.includes(categoryToAdd)) {
+                      setCategoryDraft((current) => [...current, categoryToAdd]);
+                    }
+                    setCategoryToAdd("");
+                  }}
+                  className="inline-flex items-center justify-center gap-1 rounded bg-styler-accent px-3 py-2 text-xs font-semibold text-white hover:bg-styler-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              {serviceCategories.length === 0 && !categoryError && (
+                <p className="text-[10px] text-styler-muted">No active categories are available right now.</p>
+              )}
+              {categoryDraft.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {categoryDraft.map((slug) => {
+                    const categoryIndex = categories.indexOf(slug);
+                    const label = serviceCategories.find((category) => category.slug === slug)?.name
+                      || profile?.categoryLabels?.[categoryIndex]
+                      || humanize(slug);
+                    return (
+                      <span key={slug} className="inline-flex items-center gap-1 rounded border border-styler-line-strong bg-styler-accent-soft px-2.5 py-1 text-[10px] font-semibold text-styler-accent">
+                        {label}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${label}`}
+                          disabled={savingCategories}
+                          onClick={() => setCategoryDraft((current) => current.filter((item) => item !== slug))}
+                          className="rounded p-0.5 hover:bg-white/70 disabled:opacity-50"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[10px] text-styler-muted">No categories selected. Add at least one category.</p>
+              )}
+              {categoryDraft.length === 0 && (
+                <p className="text-[10px] text-amber-700">Select at least one category before saving.</p>
+              )}
+              <div className="flex justify-end gap-2 border-t border-styler-line pt-3">
+                <button
+                  type="button"
+                  disabled={savingCategories}
+                  onClick={() => setEditingCategories(false)}
+                  className="rounded border border-styler-line px-3 py-1.5 text-[10px] font-semibold text-styler-ink hover:bg-styler-surface-2 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingCategories || categoryDraft.length === 0}
+                  onClick={() => void saveCategories()}
+                  className="inline-flex items-center gap-1 rounded bg-styler-accent px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-styler-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Save size={11} /> {savingCategories ? "Saving..." : "Save categories"}
+                </button>
+              </div>
+            </div>
+          ) : categories.length > 0 ? (
             <div className="flex flex-wrap gap-2 pt-1">
-              {categories.map((c: string) => (
+              {categories.map((c: string, index: number) => (
                 <span
                   key={c}
                   className="inline-flex items-center gap-1 rounded bg-styler-accent-soft px-3 py-1 text-[10px] font-semibold text-styler-accent border border-styler-line-strong "
                 >
-                  <Scissors size={11} /> {humanize(c)}
+                  <Scissors size={11} /> {profile?.categoryLabels?.[index] || humanize(c)}
                 </span>
               ))}
             </div>

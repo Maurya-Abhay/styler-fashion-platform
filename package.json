@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "create-admin": "tsx scripts/create-admin.ts",
+    "seed:service-categories": "tsx scripts/seed-service-categories.ts",
     "test:integration": "node --import tsx --test tests/integration/*.test.ts"
   },
   "dependencies": {

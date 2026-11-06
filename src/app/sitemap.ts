@@ -2,15 +2,14 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site-url";
 import { connectDB } from "@/lib/db";
 import ProfessionalProfile from "@/models/ProfessionalProfile";
+import { listServiceCategories } from "@/lib/service-categories";
 
 const BASE_URL = SITE_URL;
 
 export const dynamic = "force-dynamic";
 const publicRoutes = [
   "", "/about", "/professionals",
-  "/services/lehenga_stitching", "/services/custom_clothing", "/services/alterations",
-  "/services/personal_styling", "/services/fashion_consulting",
-  "/services/special_occasion_wear", "/services/other", "/terms", "/privacy",
+  "/terms", "/privacy",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -21,6 +20,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: "weekly",
     priority: route === "" ? 1 : route === "/professionals" ? 0.9 : route === "/about" ? 0.7 : 0.6,
   }));
+
+  try {
+    const categories = await listServiceCategories();
+    for (const category of categories) {
+      publicUrls.push({
+        url: `${BASE_URL}/services/${encodeURIComponent(category.slug)}`,
+        lastModified: category.updatedAt || now,
+        changeFrequency: "weekly",
+        priority: 0.6,
+      });
+    }
+  } catch (error) {
+    console.error("Unable to include service categories in sitemap", error instanceof Error ? error.message : "Unknown error");
+  }
 
   try {
     await connectDB();

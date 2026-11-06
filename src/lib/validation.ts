@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { AppError } from "@/types";
-import { SERVICE_CATEGORY_IDS } from "@/lib/categories";
 
 /** http(s) URLs only: z.string().url() also accepts javascript:, data: and file: schemes. */
 export const httpUrlSchema = z.string().url().max(2048).refine((value) => /^https?:\/\//i.test(value), "Only http(s) URLs are allowed.");
@@ -60,7 +59,7 @@ export const savedAddressSchema = addressFieldsSchema.extend({
   postalCode: z.string().trim().min(4).max(12).optional(),
 }).refine(hasCoordinatePair, coordinatePairError);
 
-export const serviceCategorySchema = z.enum(SERVICE_CATEGORY_IDS);
+export const serviceCategorySchema = z.string().trim().regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/).max(120);
 export const bookingRequestSchema = z.object({
   serviceCategory: serviceCategorySchema,
   requirements: z.string().trim().min(10).max(4000),
