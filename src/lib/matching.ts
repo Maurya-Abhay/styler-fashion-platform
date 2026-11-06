@@ -1,6 +1,7 @@
 import BookingRequest from "@/models/BookingRequest";
 import BookingOffer from "@/models/BookingOffer";
 import ProfessionalProfile from "@/models/ProfessionalProfile";
+import User from "@/models/User";
 import Service from "@/models/Service";
 import Availability from "@/models/Availability";
 import { findAvailableStartTimes } from "@/lib/availability";
@@ -32,6 +33,35 @@ export function servesWithinRadius(profile: any, request: any): boolean {
   return servesAddress(profile, address);
 }
 
+export function isEligibleProfessional(profile: any, user: any, request: any): boolean {
+  return Boolean(
+    user
+    && user.role === "professional"
+    && user.accountStatus === "active"
+    && String(user._id) === String(profile.userId)
+    && String(user._id) !== String(request.customerId)
+    && profile.applicationStatus === "approved"
+    && profile.categories?.includes(request.serviceCategory),
+  );
+}
+
+async function findCategoryProfessionals(request: any): Promise<any[]> {
+  const profiles = await ProfessionalProfile.find({
+    applicationStatus: "approved",
+    categories: request.serviceCategory,
+  }).select("_id userId categories city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
+  if (!profiles.length) return [];
+
+  const users = await User.find({
+    _id: { $in: profiles.map((profile: any) => profile.userId), $ne: request.customerId },
+    role: "professional",
+    accountStatus: "active",
+  }).select("_id role accountStatus").lean();
+  const usersById = new Map(users.map((user: any) => [String(user._id), user]));
+  return profiles.filter((profile: any) =>
+    isEligibleProfessional(profile, usersById.get(String(profile.userId)), request));
+}
+
 export interface MatchCandidate {
   profile: any;
   service: any;
@@ -43,10 +73,7 @@ export interface MatchCandidate {
 export async function findMatchingProfessionals(requestId: string): Promise<MatchCandidate[]> {
   const request = await BookingRequest.findById(requestId).lean();
   if (!request) throw new AppError("Booking request not found.", 404, "REQUEST_NOT_FOUND");
-  const profiles = await ProfessionalProfile.find({
-    applicationStatus: "approved",
-    categories: request.serviceCategory,
-  }).select("_id userId categories city state postalCode serviceAreas baseLocation updatedAt").sort({ updatedAt: -1 }).lean();
+  const profiles = await findCategoryProfessionals(request);
   if (!profiles.length) return [];
   const locationMatches = profiles.filter((profile: any) => servesWithinRadius(profile, request));
   if (!locationMatches.length) return [];
@@ -167,12 +194,9 @@ export async function findMatchingProfessionals(requestId: string): Promise<Matc
 }
 
 async function explainNoMatch(request: any): Promise<string> {
-  const categoryProfiles = await ProfessionalProfile.find({
-    applicationStatus: "approved",
-    categories: request.serviceCategory,
-  }).select("_id city state serviceAreas baseLocation").lean();
+  const categoryProfiles = await findCategoryProfessionals(request);
   if (!categoryProfiles.length) {
-    return "No approved professional currently offers this service category. Try again later or choose another category.";
+    return "No active, approved professional currently offers this service category. Try again later or choose another category.";
   }
 
   const localProfiles = categoryProfiles.filter((profile: any) =>

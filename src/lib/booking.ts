@@ -68,18 +68,6 @@ export function validateQuotePrice(
   return quotePaise;
 }
 
-async function notifyCustomerMatchingStarted(customerId: string, requestId: string) {
-  await notifyUser({
-    recipientUserId: customerId,
-    type: "booking_request_received",
-    title: "Request received",
-    message: "We received your request and are matching it with available professionals.",
-    channels: ["in_app", "email"],
-    data: { requestId },
-    dedupeKey: `request-matching-customer:${requestId}`,
-  }).catch((error) => console.error("Unable to notify customer that matching started", error instanceof Error ? error.message : "Unknown notification error"));
-}
-
 export async function createBookingRequest(input: CreateBookingRequestInput) {
   const start = new Date(input.preferredStartAt);
   const end = new Date(input.preferredEndAt);
@@ -111,7 +99,6 @@ export async function createBookingRequest(input: CreateBookingRequestInput) {
   });
   try {
     const matching = await dispatchOffersForRequest(String(request._id));
-    if (matching.status === "offers_sent") await notifyCustomerMatchingStarted(input.customerId, String(request._id));
     return { request: await BookingRequest.findById(request._id).lean(), matching };
   } catch (error) {
     // The request is already durable. If dispatch had a transient failure, return
@@ -124,7 +111,6 @@ export async function createBookingRequest(input: CreateBookingRequestInput) {
         status: current.status,
         error: error instanceof Error ? error.message : "Unknown error",
       });
-      if (current.status === "matching") await notifyCustomerMatchingStarted(input.customerId, String(request._id));
       return {
         request: current,
         matching: {

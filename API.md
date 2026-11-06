@@ -317,7 +317,7 @@ Customer APIs manage service discovery, booking requests, appointments, payments
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | GET | `/booking-requests` | Customer / Admin | List customer requests or all requests for administrators. |
-| POST | `/booking-requests` | Customer | Create a service request and dispatch matching offers. |
+| POST | `/booking-requests` | Customer | Create a service request and dispatch offers only to active, approved professionals matching the selected category, location, active service listing, and availability. |
 | GET | `/booking-requests/[requestId]` | Customer / Professional / Admin | Retrieve a request subject to ownership or offer authorization. |
 | PATCH | `/booking-requests/[requestId]` | Customer | Cancel an active, unassigned request and close sent offers. |
 
