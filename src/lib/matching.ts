@@ -23,11 +23,25 @@ function servesAddress(profile: any, address: any): boolean {
   return primaryCityMatches || serviceAreaMatches;
 }
 
+function servesSamePostalCode(profile: any, address: any): boolean {
+  if (!address?.postalCode) return false;
+  const primaryMatches = sameText(profile.city, address.city)
+    && sameText(profile.state, address.state)
+    && sameText(profile.postalCode, address.postalCode);
+  const serviceAreaMatches = (profile.serviceAreas ?? []).some((area: any) =>
+    sameText(area.city, address.city)
+    && sameText(area.state, address.state)
+    && area.postalCodes?.some((postalCode: string) => sameText(postalCode, address.postalCode)));
+  return primaryMatches || serviceAreaMatches;
+}
+
 export function servesWithinRadius(profile: any, request: any): boolean {
   const address = request.addressSnapshot;
   if (typeof address?.latitude === "number" && typeof address?.longitude === "number") {
     const location = profile.baseLocation;
-    if (typeof location?.latitude !== "number" || typeof location?.longitude !== "number") return false;
+    if (typeof location?.latitude !== "number" || typeof location?.longitude !== "number") {
+      return servesSamePostalCode(profile, address);
+    }
     return isWithinSearchRadius(address, location, Number(request.searchRadiusKm ?? 25));
   }
   return servesAddress(profile, address);

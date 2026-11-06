@@ -50,7 +50,7 @@ test("reverse-geocode normalization supports localities and rejects incomplete a
   assert.equal(withoutPostalCode?.postalCode, "");
 });
 
-test("GPS requests only match professionals with a pin inside the requested radius", () => {
+test("GPS requests enforce radius for pinned professionals and use exact postal-code fallback without a pin", () => {
   const request = {
     searchRadiusKm: 10,
     addressSnapshot: {
@@ -64,8 +64,24 @@ test("GPS requests only match professionals with a pin inside the requested radi
   assert.equal(servesWithinRadius({
     city: "Gurugram",
     state: "Haryana",
+    postalCode: "122002",
     baseLocation: {},
   }, request), false);
+
+  assert.equal(servesWithinRadius({
+    city: "Gurugram",
+    state: "Haryana",
+    postalCode: "122001",
+    baseLocation: {},
+  }, request), true);
+
+  assert.equal(servesWithinRadius({
+    city: "Gurugram",
+    state: "Haryana",
+    postalCode: "122002",
+    serviceAreas: [{ city: "Gurugram", state: "Haryana", postalCodes: ["122001"] }],
+    baseLocation: {},
+  }, request), true);
 
   assert.equal(servesWithinRadius({
     city: "Gurugram",
@@ -76,6 +92,7 @@ test("GPS requests only match professionals with a pin inside the requested radi
   assert.equal(servesWithinRadius({
     city: "Delhi",
     state: "Delhi",
+    postalCode: "122001",
     baseLocation: {},
   }, request), false);
 
